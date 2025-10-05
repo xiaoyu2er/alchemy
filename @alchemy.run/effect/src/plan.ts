@@ -3,7 +3,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { Phase } from "./phase.ts";
 import type { SerializedStatement, Statement } from "./policy.ts";
-import type { Provider } from "./provider.ts";
+import type { ProviderService } from "./provider.ts";
 import type { Resource } from "./resource.ts";
 import type { Service } from "./service.ts";
 import { State, type ResourceState } from "./state.ts";
@@ -72,7 +72,7 @@ export type Create<
   action: "create";
   resource: R;
   news: any;
-  provider: Provider;
+  provider: ProviderService;
   bindings: Attach<B>[];
   attributes: R["attributes"];
 };
@@ -86,7 +86,7 @@ export type Update<
   olds: any;
   news: any;
   output: any;
-  provider: Provider;
+  provider: ProviderService;
   bindings: BindNode<B>[];
   attributes: R["attributes"];
 };
@@ -99,7 +99,7 @@ export type Delete<
   resource: R;
   olds: any;
   output: any;
-  provider: Provider;
+  provider: ProviderService;
   bindings: [];
   attributes: R["attributes"];
   downstream: string[];
@@ -124,7 +124,7 @@ export type Replace<
   olds: any;
   news: any;
   output: any;
-  provider: Provider;
+  provider: ProviderService;
   bindings: BindNode<B>[];
   attributes: R["attributes"];
   deleteFirst?: boolean;
@@ -251,7 +251,8 @@ export const plan = <
                             : resource.props;
 
                           const oldState = yield* state.get(id);
-                          const provider: Provider = yield* resource.provider;
+                          const provider: ProviderService =
+                            yield* resource.provider;
                           const bindings = diffBindings(oldState, statements);
 
                           if (
@@ -387,7 +388,7 @@ export const plan = <
                   bindings: [],
                   resource: {
                     ID: id,
-                    Type: oldState.type,
+                    Class: oldState.type,
                     Attr: oldState.output,
                     Props: oldState.props,
                     provider,

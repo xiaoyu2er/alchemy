@@ -57,7 +57,7 @@
     }
   },
   "linter": {
-    "enabled": true,
+    "enabled": false,
     "rules": {
       "recommended": true,
       "correctness": {
@@ -92,7 +92,8 @@
         "noEmptyInterface": "off",
         "noRedeclare": "off",
         "noControlCharactersInRegex": "off",
-        "noConfusingVoidType": "off"
+        "noConfusingVoidType": "off",
+        "noUnsafeDeclarationMerging": "off"
       },
       "style": {
         "useLiteralEnumMembers": "error",

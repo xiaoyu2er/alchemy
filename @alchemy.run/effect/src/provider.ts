@@ -1,5 +1,17 @@
+import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type { Class } from "./class.ts";
 import type { Resource } from "./resource.ts";
+
+export interface ProviderTag<R extends Resource>
+  extends Context.TagClass<ProviderTag<R>, R["Type"], Provider<R>> {
+  <cls extends Class<Resource>>(cls: cls): ProviderTag<cls["Object"]>;
+}
+
+export const Provider = (<cls extends Class<Resource>>(cls: cls) => {
+  type R = Extract<Class.Instance<cls>, Resource>;
+  return Context.Tag(cls.Name)<ProviderTag<R>, Provider<R>>();
+}) as ProviderTag<Resource>;
 
 export type Diff =
   | {
@@ -11,12 +23,10 @@ export type Diff =
       deleteFirst?: boolean;
     };
 
-export type Provider<Res extends Resource = Resource> = {
+export interface Provider<Res extends Resource = Resource> {
   // tail();
   // watch();
   // replace(): Effect.Effect<void, never, never>;
-  kind: "Provider";
-  type: Res["Type"];
   read?(input: {
     id: string;
     olds: Res["Props"] | undefined;
@@ -48,4 +58,4 @@ export type Provider<Res extends Resource = Resource> = {
     olds: Res["Props"];
     output: Res["Attr"];
   }): Effect.Effect<void, any, never>;
-};
+}

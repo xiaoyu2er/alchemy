@@ -11,7 +11,7 @@ import {
   DotAlchemy,
   type BindingLifecycle,
   type BindNode,
-  type Provider,
+  type ProviderService,
   type Statement,
 } from "@alchemy.run/effect";
 import type {
@@ -43,7 +43,7 @@ export interface FunctionProviderProps extends FunctionProps {
 
 export class FunctionProvider extends Context.Tag("AWS::Lambda::Function")<
   FunctionProvider,
-  Provider<
+  ProviderService<
     FunctionType,
     FunctionProviderProps,
     FunctionAttributes<string, FunctionProps>,
@@ -589,7 +589,7 @@ export const functionProvider = () =>
             .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
           return null as any;
         }),
-      } satisfies Provider<
+      } satisfies ProviderService<
         FunctionType,
         FunctionProviderProps,
         FunctionAttributes<string, FunctionProps>

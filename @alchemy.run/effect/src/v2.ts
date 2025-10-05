@@ -1,28 +1,37 @@
+import * as FileSystem from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import type * as HKT from "effect/HKT";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Binding, type BindingLike } from "./binding.ts";
-import { Host } from "./host.ts";
-import { Resource, type InstanceOf } from "./resource.ts";
+import { Binding, type BindingTag } from "./binding.ts";
+import { Capability } from "./capability.ts";
+import type { Class } from "./class.ts";
+import { Provider } from "./provider.ts";
+import { Resource } from "./resource.ts";
 import { Service } from "./service.ts";
 
-// AWS Lambda Function (Host)
-export type Lambda<Binding extends BindingLike> = Host<
+// AWS Lambda Function (Binding)
+export const Lambda = <Cap extends Capability>(Cap: Cap) =>
+  Binding("AWS.Lambda.Function", Cap)<Lambda<Cap>>();
+
+export type Lambda<Cap extends Capability> = BindingTag<
+  Lambda<Cap>,
   "AWS.Lambda.Function",
-  Binding,
+  Cap,
   {
     env: Record<string, string>;
     policyStatements: any[];
   }
 >;
-export const Lambda = <B extends BindingLike>(binding: B): Lambda<B> =>
-  Host("AWS.Lambda.Function", binding);
 
 // Cloudflare Worker (Host)
-export type Worker<Binding extends BindingLike> = Host<
+export const Worker = <Cap extends Capability>(Cap: Cap) =>
+  Binding("Cloudflare.Worker", Cap)<Worker<Cap>>();
+
+export type Worker<Cap extends Capability> = BindingTag<
+  Worker<Cap>,
   "Cloudflare.Worker",
-  Binding,
+  Cap,
   {
     bindings: {
       [key: string]: any;
@@ -30,55 +39,45 @@ export type Worker<Binding extends BindingLike> = Host<
   }
 >;
 
-export const Worker = <Binding extends BindingLike>(
-  binding: Binding,
-): Worker<Binding> => Host("Cloudflare.Worker", binding);
-
 // SQS Queue (Resource)
-export declare namespace Queue {
-  export type Props<Message = any> = {
-    fifo?: boolean;
-    schema: S.Schema<Message>;
-  };
-  export type Attr<
-    ID extends string,
-    Props extends Queue.Props = Queue.Props,
-  > = {
-    id: ID;
-    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-  };
-  export type Instance<
-    ID extends string = string,
-    Props extends Queue.Props = Queue.Props,
-  > = Resource<"AWS.SQS.Queue", ID, Props, Queue.Attr<ID, Props>>;
-}
+export type QueueProps<Message = any> = {
+  fifo?: boolean;
+  schema: S.Schema<Message>;
+};
+
 export type Queue<
   ID extends string = string,
-  Props extends Queue.Props = Queue.Props,
-> = Queue.Instance<ID, Props> &
-  (<const ID extends string, Props extends Queue.Props>(
+  Props extends QueueProps = QueueProps,
+> = Resource<
+  "AWS.SQS.Queue",
+  ID,
+  Props,
+  {
+    id: ID;
+    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+  }
+>;
+
+export const Queue: Class<
+  Queue,
+  <ID extends string, Props extends QueueProps>(
     id: ID,
     props: Props,
-  ) => Queue<ID, Props>);
-export const Queue = Resource("AWS.SQS.Queue")<Queue>();
+  ) => Queue<ID, Props>
+> = Resource("AWS.SQS.Queue");
 
 // Consume (Binding)
-export type Consume<Q = Queue.Instance> = Binding<
-  "AWS::SQS::Consume",
-  Extract<Q, Queue.Instance>
-> &
-  (<Q>(queue: Q) => Consume<InstanceOf<Q>>);
-export const Consume = ((queue: Queue.Instance) =>
-  Binding("AWS::SQS::Consume", queue)) as Consume<Queue>;
+export type Consume<Q = Queue> = Capability<"AWS.SQS.Consume", Q> &
+  (<Q>(queue: Q) => Consume<Class.Instance<Q>>);
+export const Consume = Capability("AWS.SQS.Consume", Queue) as Consume<Queue>;
 
 // SendMessage (Binding)
-export type SendMessage<Q = Queue.Instance> = Binding<
-  "AWS::SQS::SendMessage",
-  Extract<Q, Queue.Instance>
-> &
-  (<Q>(queue: Q) => SendMessage<InstanceOf<Q>>);
-export const SendMessage = ((queue: Queue.Instance) =>
-  Binding("AWS::SQS::SendMessage", queue)) as SendMessage<Queue>;
+export type SendMessage<Q = Queue> = Capability<"AWS.SQS.SendMessage", Q> &
+  (<Q>(queue: Q) => SendMessage<Class.Instance<Q>>);
+export const SendMessage: SendMessage<Queue> = Capability(
+  "AWS.SQS.SendMessage",
+  Queue,
+);
 
 // example resource
 class Messages extends Queue("messages", {
@@ -97,27 +96,30 @@ const _Messages = Queue("messages", {
   }),
 });
 
-const __L = Lambda(Consume);
-const __c = Consume(Messages);
-const _tag = SendMessage(Messages);
-const __tag = SendMessage(_Messages);
-
-export const queueProvider = Layer.effect(
+export const queueProvider = Layer.succeed(
   Provider(Queue),
-  Effect.gen(function* () {
-    return {
-      read: Effect.fn(function* ({ id, olds, output }) {
-        return output;
-      }),
-    };
+  Provider(Queue).of({
+    create: Effect.fn(function* () {
+      return {
+        id: "test",
+        queueUrl: "test",
+      };
+    }),
+    update: Effect.fn(function* () {
+      return {
+        id: "test",
+        queueUrl: "test",
+      };
+    }),
+    delete: Effect.fn(function* () {}),
   }),
 );
 
 // bind a Queue to an AWS Lambda function
 export const lambdaQueueEventSource = Layer.effect(
-  Lambda(Consume),
+  Lambda(Consume(Queue)),
   Effect.gen(function* () {
-    return {
+    return Lambda(Consume(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           env: {
@@ -125,15 +127,15 @@ export const lambdaQueueEventSource = Layer.effect(
           },
         };
       }),
-    };
+    });
   }),
 );
 
 // bind a Queue to a Cloudflare Worker
 export const lambdaQueueCloudflareBinding = Layer.effect(
-  Worker(Consume),
+  Worker(Consume(Queue)),
   Effect.gen(function* () {
-    return {
+    return Worker(Consume(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           bindings: {
@@ -141,14 +143,15 @@ export const lambdaQueueCloudflareBinding = Layer.effect(
           },
         };
       }),
-    };
+    });
   }),
 );
 
 export const lambdaSendMessage = Layer.effect(
-  Lambda(SendMessage),
+  Lambda(SendMessage(Queue)),
   Effect.gen(function* () {
-    return {
+    const _fs = yield* FileSystem.FileSystem;
+    return Lambda(SendMessage(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           policyStatements: [
@@ -163,7 +166,7 @@ export const lambdaSendMessage = Layer.effect(
           },
         };
       }),
-    };
+    });
   }),
 );
 
@@ -176,7 +179,7 @@ const echo = serve(
   }),
 );
 
-// const _tag: typeof tag = "AWS::SQS::SendMessage(messages)";
+// const _tag: typeof tag = "AWS.SQS.SendMessage(messages)";
 
 export interface FlatMap<F extends HKT.TypeLambda> extends HKT.TypeClass<F> {
   readonly flatMap: {

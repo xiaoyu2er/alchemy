@@ -85,7 +85,7 @@ export const apply = <const P extends Plan, Err, Req>(
                       bindings: node.bindings.map((binding) => ({
                         ...binding.stmt,
                         resource: {
-                          type: binding.stmt.resource.Type,
+                          type: binding.stmt.resource.Class,
                           id: binding.stmt.resource.ID,
                         },
                       })),

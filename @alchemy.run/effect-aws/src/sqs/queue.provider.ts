@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
-import { App, type Provider } from "@alchemy.run/effect";
+import { App, type ProviderService } from "@alchemy.run/effect";
 import { AccountID } from "../account.ts";
 import { Region } from "../region.ts";
 import { QueueClient } from "./queue.client.ts";
@@ -11,7 +11,7 @@ import { QueueType, type QueueAttributes, type QueueProps } from "./queue.ts";
 
 export class QueueProvider extends Context.Tag(QueueType)<
   QueueProvider,
-  Provider<QueueType, QueueProps, QueueAttributes<string, QueueProps>>
+  ProviderService<QueueType, QueueProps, QueueAttributes<string, QueueProps>>
 >() {}
 
 export const queueProvider = () =>
@@ -99,7 +99,7 @@ export const queueProvider = () =>
             })
             .pipe(Effect.catchTag("QueueDoesNotExist", () => Effect.void));
         }),
-      } satisfies Provider<
+      } satisfies ProviderService<
         QueueType,
         QueueProps,
         QueueAttributes<string, QueueProps>

@@ -1,68 +1,48 @@
+import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
-import type { InstanceOf, Resource, ResourceLike } from "./resource.ts";
+import type { Capability } from "./capability.ts";
+import type { Resource, ResourceProps } from "./resource.ts";
 
-export type BindingLike = {
-  Resource: Resource;
-  Verb: string;
-};
+export interface BindingTag<
+  Self,
+  Name extends string,
+  Cap extends Capability,
+  Props extends ResourceProps,
+> extends Context.TagClass<
+    Self,
+    `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Name})`,
+    Binding<Cap["Resource"], Props>
+  > {}
+
+export const Binding =
+  <
+    const Runtime extends string,
+    Cap extends Capability,
+    Props extends ResourceProps,
+  >(
+    Runtime: Runtime,
+    Cap: Cap,
+  ) =>
+  <Self>(): Self =>
+    Object.assign(
+      Context.Tag(
+        `${Cap.Verb}(${Cap.Resource.Type.Name}, ${Runtime})` as `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Runtime})`,
+      )<Self, Binding<Cap["Resource"]["Type"], Props>>(),
+      {
+        Kind: "Binding",
+        Capability: Cap,
+      },
+    ) as Self;
 
 export type Binding<
-  Verb extends string = string,
-  Res extends { Type: string } = Resource,
-> = {
-  Kind: "Binding";
-  Verb: Verb;
-  Resource: Res;
-  Type: Res["Type"];
-};
-
-export const Binding = <
-  const Verb extends string,
-  const Res extends ResourceLike,
->(
-  verb: Verb,
-  resource: Res,
-) =>
-  Object.assign(
-    (resource: InstanceOf<Res>, props?: any) => ({
-      resource,
-      props,
-    }),
-    {
-      Kind: "Binding",
-      Verb: verb,
-      Resource: resource,
-      Type: resource.Type,
-    },
-  ) as Binding<Verb, Res>;
-// class {
-//   static readonly Kind = "Binding";
-//   static readonly Verb = verb;
-//   static readonly Resource = resource;
-//   static readonly Tag =
-//     `${verb}<${resource.Type}>` as `${Verb}<${Res["Type"]}>`;
-
-//   readonly Tag;
-//   constructor(readonly resource: InstanceOf<Res>) {
-//     this.Tag = `${verb}<${resource.Type}>` as `${Verb}<${Res["Type"]}>`;
-//   }
-// } as any as Binding<Verb, Res>;
-
-export type BindingLifecycle<
-  Resource extends Resource.Type = Resource.Type,
-  Host extends Resource.Props = Resource.Props,
-  AttachReq = any,
-  DetachReq = any,
+  R extends Resource = Resource,
+  Props extends ResourceProps = ResourceProps,
+  // AttachReq = any,
+  // DetachReq = any,
 > = {
   attach: (
-    resource: Resource["Attr"],
-    to: Host,
-  ) =>
-    | Effect.Effect<Partial<Host> | void, never, AttachReq>
-    | Partial<Host>
-    | void;
-  detach?: (
-    resource: Resource["Attr"],
-    from: Host,
-  ) => Effect.Effect<void, never, DetachReq>;
+    resource: R["Attr"],
+    to: Props,
+  ) => Effect.Effect<Partial<Props> | void>;
+  detach?: (resource: R["Attr"], from: Props) => Effect.Effect<void>;
 };
