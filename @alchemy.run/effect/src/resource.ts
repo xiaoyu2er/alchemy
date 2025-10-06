@@ -7,18 +7,21 @@ export type ResourceClass<Type extends string = string> = {
   Kind: "Resource";
   Type: Type;
   new (...args: any[]): any;
+  (...args: any[]): any;
 };
 
 export declare namespace Resource {
-  export type Instance<R> = R extends new (
-    ...args: any[]
-  ) => infer I
+  export type Instance<R> = R extends (...args: any[]) => infer I
     ? I
     : R extends new (
-          _: never,
+          ...args: any[]
         ) => infer I
       ? I
-      : R;
+      : R extends new (
+            _: never,
+          ) => infer I
+        ? I
+        : R;
 }
 
 export type Resource<
