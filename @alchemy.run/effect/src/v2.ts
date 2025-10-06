@@ -7,7 +7,6 @@ import { Binding, type BindingTag } from "./binding.ts";
 import { Capability } from "./capability.ts";
 import type { Class } from "./class.ts";
 import { Provider } from "./provider.ts";
-import { Resource } from "./resource.ts";
 import { Service } from "./service.ts";
 
 // AWS Lambda Function (Binding)
@@ -45,26 +44,52 @@ export type QueueProps<Message = any> = {
   schema: S.Schema<Message>;
 };
 
-export type Queue<
+export class Queue<
   ID extends string = string,
   Props extends QueueProps = QueueProps,
-> = Resource<
-  "AWS.SQS.Queue",
-  ID,
-  Props,
-  {
-    id: ID;
+> extends Resource("AWS.SQS.Queue") {
+  declare readonly Attr: {
     queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+  };
+  constructor(
+    readonly ID: ID,
+    readonly Props: Props,
+  ) {
+    super();
   }
->;
-
-export const Queue: Class<
-  Queue,
-  <ID extends string, Props extends QueueProps>(
+  public consume<Q extends Queue, ID extends string, Err, Req>(
+    this: Q,
     id: ID,
-    props: Props,
-  ) => Queue<ID, Props>
-> = Resource("AWS.SQS.Queue");
+    handler: (
+      event: SQSEvent<Props["schema"]["Type"]>,
+      context: lambda.Context,
+    ) => Effect.Effect<lambda.SQSBatchResponse | void, Err, Req>,
+  ) {
+    return Service(id, handler, Consume(this));
+  }
+}
+
+export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
+  body: Data;
+};
+
+export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
+  Records: SQSRecord<Data>[];
+};
+
+import type * as lambda from "aws-lambda";
+import { Resource } from "./resource.ts";
+
+export type ConsumerHandler<
+  A extends lambda.SQSBatchResponse | void = lambda.SQSBatchResponse | void,
+  Err = any,
+  Req = any,
+> = (
+  event: lambda.SQSEvent,
+  context: lambda.Context,
+) => Effect.Effect<A, Err, Req>;
+
+// export const consume = Service<ConsumerHandler>();
 
 // Consume (Binding)
 export type Consume<Q = Queue> = Capability<"AWS.SQS.Consume", Q> &
@@ -79,22 +104,10 @@ export const SendMessage: SendMessage<Queue> = Capability(
   Queue,
 );
 
-// example resource
-class Messages extends Queue("messages", {
-  fifo: true,
-  schema: S.Struct({
-    id: S.Int,
-    value: S.String,
-  }),
-}) {}
-
-const _Messages = Queue("messages", {
-  fifo: true,
-  schema: S.Struct({
-    id: S.Int,
-    value: S.String,
-  }),
-});
+export declare const sendMessage: <Q extends Queue>(
+  queue: Q,
+  message: Q["Props"]["schema"]["Type"],
+) => Effect.Effect<void, never, SendMessage<Class.Instance<Q>>>;
 
 export const queueProvider = Layer.succeed(
   Provider(Queue),
@@ -135,6 +148,7 @@ export const lambdaQueueEventSource = Layer.effect(
 export const lambdaQueueCloudflareBinding = Layer.effect(
   Worker(Consume(Queue)),
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
     return Worker(Consume(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
@@ -147,10 +161,9 @@ export const lambdaQueueCloudflareBinding = Layer.effect(
   }),
 );
 
-export const lambdaSendMessage = Layer.effect(
+export const lambdaSendSQSMessage = Layer.effect(
   Lambda(SendMessage(Queue)),
   Effect.gen(function* () {
-    const _fs = yield* FileSystem.FileSystem;
     return Lambda(SendMessage(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
@@ -170,12 +183,37 @@ export const lambdaSendMessage = Layer.effect(
   }),
 );
 
+// example resource
+class Messages extends (new Queue("messages", {
+  fifo: true,
+  schema: S.Struct({
+    id: S.Int,
+    value: S.String,
+  }),
+})) {}
+
 export const serve = Service<(req: Request) => Effect.Effect<Response, any>>();
 
 const echo = serve(
   "echo",
   Effect.fn(function* (req) {
+    yield* sendMessage(Messages, {
+      id: 1,
+      value: "test",
+    });
     return new Response(req.body, req);
+  }),
+);
+
+const queueConsumer = Messages.consume(
+  "consume",
+  Effect.fn(function* (event) {
+    for (const record of event.Records) {
+      record.body;
+    }
+    return {
+      batchItemFailures: [],
+    };
   }),
 );
 

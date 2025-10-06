@@ -1,9 +1,6 @@
-export type cls<
-  Object = any,
-  Ctor extends (id: string, props: any) => any = any,
-> = Class<Object, Ctor>;
+export type cls<Ctor extends (id: string, props: any) => any = any> =
+  Class<Ctor>;
 export type Class<
-  Object = any,
   Ctor extends (id: string, props: any) => any = (
     id: string,
     props: any,
@@ -12,7 +9,7 @@ export type Class<
   Kind: "Class";
   Name: string;
   Ctor: Ctor;
-  Object: Object;
+  Object: ReturnType<Ctor>;
   // (id: string, props: any): Object;
   // new (id: string, props: any): any;
 };

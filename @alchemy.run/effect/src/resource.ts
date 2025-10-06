@@ -19,22 +19,16 @@ export type Resource<
 };
 
 export const Resource = <const Type extends string>(type: Type) => {
-  // <Cls extends Class<any, any>>(): Cls => {
-  type Res = any;
-  type Props = ConstructorParameters<Res>[0];
-  type Attr = InstanceType<Res>;
-  return Object.assign(
-    <const ID extends string, P extends Props>(id: ID, props: P) =>
-      Object.assign(class {}, {
-        type,
-        id,
-        props,
-        attr: undefined! as Attr,
-      }) as any as Res,
-    {
-      Type: type,
-      Props: undefined! as Props,
-      Attr: undefined! as Attr,
-    },
-  ) as any;
+  interface Resource {
+    new (_: never): {};
+  }
+  abstract class Resource {
+    static readonly Type = type;
+    abstract readonly Attr: {
+      [key: string]: any;
+    };
+    abstract readonly ID: string;
+    abstract readonly Props: any;
+  }
+  return Resource;
 };

@@ -37,12 +37,15 @@ export const Binding =
 export type Binding<
   R extends Resource = Resource,
   Props extends ResourceProps = ResourceProps,
-  // AttachReq = any,
-  // DetachReq = any,
+  AttachReq = any,
+  DetachReq = any,
 > = {
   attach: (
     resource: R["Attr"],
     to: Props,
-  ) => Effect.Effect<Partial<Props> | void>;
-  detach?: (resource: R["Attr"], from: Props) => Effect.Effect<void>;
+  ) => Effect.Effect<Partial<Props> | void, never, AttachReq>;
+  detach?: (
+    resource: R["Attr"],
+    from: Props,
+  ) => Effect.Effect<void, never, DetachReq>;
 };
