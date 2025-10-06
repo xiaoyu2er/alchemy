@@ -5,7 +5,6 @@ import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
 import { Binding, type BindingTag } from "./binding.ts";
 import { Capability } from "./capability.ts";
-import type { Class } from "./class.ts";
 import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
@@ -44,30 +43,24 @@ export type QueueProps<Message = any> = {
   schema: S.Schema<Message>;
 };
 
-export class Queue<
+export const Queue =
+  Resource("AWS.SQS.Queue")<
+    <const ID extends string, const Props extends QueueProps>(
+      id: ID,
+      props: Props,
+    ) => Queue<ID, Props>
+  >();
+export type Queue<
   ID extends string = string,
   Props extends QueueProps = QueueProps,
-> extends Resource("AWS.SQS.Queue") {
-  declare readonly Attr: {
+> = Resource<
+  "AWS.SQS.Queue",
+  ID,
+  Props,
+  {
     queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-  };
-  constructor(
-    readonly ID: ID,
-    readonly Props: Props,
-  ) {
-    super();
   }
-  public consume<Q extends Queue, ID extends string, Err, Req>(
-    this: Q,
-    id: ID,
-    handler: (
-      event: SQSEvent<Props["schema"]["Type"]>,
-      context: lambda.Context,
-    ) => Effect.Effect<lambda.SQSBatchResponse | void, Err, Req>,
-  ) {
-    return Service(id, handler, Consume(this));
-  }
-}
+>;
 
 export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
   body: Data;
@@ -80,25 +73,65 @@ export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
 import type * as lambda from "aws-lambda";
 import { Resource } from "./resource.ts";
 
-export type ConsumerHandler<
-  A extends lambda.SQSBatchResponse | void = lambda.SQSBatchResponse | void,
-  Err = any,
-  Req = any,
-> = (
-  event: lambda.SQSEvent,
-  context: lambda.Context,
-) => Effect.Effect<A, Err, Req>;
-
-// export const consume = Service<ConsumerHandler>();
+export function consume<Q extends Queue, ID extends string, Req>(
+  queue: Q,
+  id: ID,
+  handler: (
+    event: SQSEvent<Q["Props"]["schema"]["Type"]>,
+    context: lambda.Context,
+  ) => Effect.Effect<lambda.SQSBatchResponse | void, never, Req>,
+) {
+  const schema = queue.Props.schema;
+  return Service(
+    id,
+    Effect.fn(function* (event: lambda.SQSEvent, context: lambda.Context) {
+      const records = yield* Effect.all(
+        event.Records.map(
+          Effect.fn(function* (record) {
+            return {
+              ...record,
+              body: yield* S.validate(schema)(record.body).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+            };
+          }),
+        ),
+      );
+      const response = yield* handler(
+        {
+          Records: records.filter((record) => record.body !== undefined),
+        },
+        context,
+      );
+      return {
+        batchItemFailures: [
+          ...(response?.batchItemFailures ?? []),
+          ...records
+            .filter((record) => record.body === undefined)
+            .map((failed) => ({
+              itemIdentifier: failed.messageId,
+            })),
+        ],
+      } satisfies lambda.SQSBatchResponse;
+    }),
+    Consume(queue),
+  );
+}
 
 // Consume (Binding)
-export type Consume<Q = Queue> = Capability<"AWS.SQS.Consume", Q> &
-  (<Q>(queue: Q) => Consume<Class.Instance<Q>>);
-export const Consume = Capability("AWS.SQS.Consume", Queue) as Consume<Queue>;
+export type Consume<Q> = Capability<
+  "AWS.SQS.Consume",
+  Q,
+  <Q>(queue: Q) => Consume<Resource.Instance<Q>>
+>;
+export const Consume: Consume<Queue> = Capability("AWS.SQS.Consume", Queue);
 
 // SendMessage (Binding)
-export type SendMessage<Q = Queue> = Capability<"AWS.SQS.SendMessage", Q> &
-  (<Q>(queue: Q) => SendMessage<Class.Instance<Q>>);
+export type SendMessage<Q> = Capability<
+  "AWS.SQS.SendMessage",
+  Q,
+  <Q>(queue: Q) => SendMessage<Resource.Instance<Q>>
+>;
 export const SendMessage: SendMessage<Queue> = Capability(
   "AWS.SQS.SendMessage",
   Queue,
@@ -107,7 +140,7 @@ export const SendMessage: SendMessage<Queue> = Capability(
 export declare const sendMessage: <Q extends Queue>(
   queue: Q,
   message: Q["Props"]["schema"]["Type"],
-) => Effect.Effect<void, never, SendMessage<Class.Instance<Q>>>;
+) => Effect.Effect<void, never, SendMessage<Resource.Instance<Q>>>;
 
 export const queueProvider = Layer.succeed(
   Provider(Queue),
@@ -184,15 +217,18 @@ export const lambdaSendSQSMessage = Layer.effect(
 );
 
 // example resource
-class Messages extends (new Queue("messages", {
+class Messages extends Queue("messages", {
   fifo: true,
   schema: S.Struct({
     id: S.Int,
     value: S.String,
   }),
-})) {}
+}) {}
 
-export const serve = Service<(req: Request) => Effect.Effect<Response, any>>();
+export const serve = <const ID extends string, Req>(
+  id: ID,
+  handler: (req: Request) => Effect.Effect<Response, never, Req>,
+) => Service(id, handler);
 
 const echo = serve(
   "echo",
@@ -205,19 +241,18 @@ const echo = serve(
   }),
 );
 
-const queueConsumer = Messages.consume(
-  "consume",
+const messageConsumer = consume(
+  Messages,
+  "messageConsumer",
   Effect.fn(function* (event) {
     for (const record of event.Records) {
-      record.body;
+      yield* sendMessage(Messages, record.body);
     }
     return {
       batchItemFailures: [],
     };
   }),
 );
-
-// const _tag: typeof tag = "AWS.SQS.SendMessage(messages)";
 
 export interface FlatMap<F extends HKT.TypeLambda> extends HKT.TypeClass<F> {
   readonly flatMap: {

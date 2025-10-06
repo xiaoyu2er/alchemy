@@ -1,19 +1,17 @@
-import type { Class } from "./class.ts";
 import type { Resource, ResourceProps } from "./resource.ts";
 
 export type Capability<
   Verb extends string = string,
-  R extends Resource | Class<any, any> = Resource | Class<any, any>,
+  Resource = any,
+  Ctor extends (...args: any[]) => any = (...args: any[]) => any,
 > = {
   Kind: "Capability";
   Verb: Verb;
-  Resource: R;
-};
+  Resource: Resource;
+  Ctor: Ctor;
+} & Ctor;
 
-export const Capability = <
-  const Verb extends string,
-  Cls extends Class<any, any>,
->(
+export const Capability = <const Verb extends string, Cls>(
   verb: Verb,
   resource: Cls,
 ) =>
@@ -26,5 +24,6 @@ export const Capability = <
       Kind: "Capability",
       Verb: verb,
       Resource: resource,
+      Ctor: undefined!,
     } as const,
   ) as any;

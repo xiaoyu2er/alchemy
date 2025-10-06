@@ -2,7 +2,9 @@ import type * as Effect from "effect/Effect";
 import type { Capability } from "./capability.ts";
 import type { ResourceID } from "./resource.ts";
 
-export type ServiceHandler = (...inputs: any[]) => Effect.Effect<any, any, any>;
+export type ServiceHandler = (
+  ...inputs: any[]
+) => Effect.Effect<any, never, any>;
 
 export type Service<
   ID extends ResourceID = ResourceID,
