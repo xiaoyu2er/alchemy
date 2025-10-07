@@ -41,7 +41,7 @@ export const make = <S extends Service>(
       }),
       [self.id]: {
         type: "bound",
-        resource: self,
+        svc: self,
         bindings: bindings?.statements ?? [],
         // TODO(sam): this should be passed to an Effect that interacts with the Provider
         props: {

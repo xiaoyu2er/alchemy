@@ -1,6 +1,7 @@
 import type * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import type { Capability } from "./capability.ts";
 import type { Phase } from "./phase.ts";
 import type { SerializedStatement, Statement } from "./policy.ts";
 import type { ProviderService } from "./provider.ts";
@@ -12,11 +13,11 @@ import type { TagInstance } from "./tag-instance.ts";
 export type PlanError = never;
 
 export type BoundDecl<
-  Host extends Service = Service,
-  To extends Statement = Statement,
+  Svc extends Service = Service,
+  To extends Capability = Capability,
 > = {
   type: "bound";
-  resource: Host;
+  svc: Svc;
   bindings: To[];
   props: any;
 };
@@ -27,25 +28,25 @@ export const isBoundDecl = (value: any): value is BoundDecl =>
 /**
  * A node in the plan that represents a binding operation acting on a resource.
  */
-export type BindNode<Stmt extends Statement = Statement> =
-  | Attach<Stmt>
-  | Detach<Stmt>
-  | NoopBind<Stmt>;
+export type BindNode<Cap extends Capability = Capability> =
+  | Attach<Cap>
+  | Detach<Cap>
+  | NoopBind<Cap>;
 
-export type Attach<Stmt extends Statement = Statement> = {
+export type Attach<Stmt extends Capability = Capability> = {
   action: "attach";
   stmt: Stmt;
   olds?: SerializedStatement<Stmt>;
   attributes: Stmt["resource"]["Attr"];
 };
 
-export type Detach<Stmt extends Statement = Statement> = {
+export type Detach<Stmt extends Capability = Capability> = {
   action: "detach";
   stmt: Stmt;
   attributes: Stmt["resource"]["Attr"];
 };
 
-export type NoopBind<Stmt extends Statement = Statement> = {
+export type NoopBind<Stmt extends Capability = Capability> = {
   action: "noop";
   stmt: Stmt;
   attributes: Stmt["resource"]["Attr"];
@@ -240,9 +241,7 @@ export const plan = <
                     (yield* Effect.all(
                       Object.entries(subgraph).map(
                         Effect.fn(function* ([id, node]) {
-                          const resource = isBoundDecl(node)
-                            ? node.resource
-                            : node;
+                          const resource = isBoundDecl(node) ? node.svc : node;
                           const statements = isBoundDecl(node)
                             ? node.bindings
                             : [];
@@ -348,7 +347,7 @@ export const plan = <
             | {
                 [id in keyof Resources]: Resources[id] extends BoundDecl
                   ?
-                      | TagInstance<Resources[id]["resource"]["provider"]>
+                      | TagInstance<Resources[id]["svc"]["provider"]>
                       | TagInstance<
                           Resources[id]["bindings"][number]["resource"]["provider"]
                         >

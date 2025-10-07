@@ -4,10 +4,9 @@ export type ResourceProps = Record<string, any>;
 export type ResourceAttr = Record<string, any>;
 
 export type ResourceClass<Type extends string = string> = {
-  Kind: "Resource";
+  Kind: "ResourceClass";
   Type: Type;
   new (...args: any[]): any;
-  (...args: any[]): any;
 };
 
 export declare namespace Resource {
@@ -29,6 +28,7 @@ export type Resource<
   ID extends ResourceID = ResourceID,
   Props extends ResourceProps = ResourceProps,
   Attr extends ResourceAttr = ResourceAttr,
+  Parent = never,
 > = {
   Kind: "Resource";
   Type: Type;
@@ -36,7 +36,8 @@ export type Resource<
   Props: Props;
   /** @internal phantom type */
   Attr: Attr;
-  new (...args: any[]): any;
+  Parent: Parent;
+  new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
 };
 
 export const Resource =
@@ -47,7 +48,7 @@ export const Resource =
     }
     abstract class R {
       static readonly Type = type;
-      static readonly Kind = "Resource";
+      static readonly Kind = "ResourceClass";
 
       readonly Kind = "Resource";
       readonly Type = type;
@@ -57,5 +58,5 @@ export const Resource =
         [key: string]: any;
       };
     }
-    return R as unknown as Self & Resource<Type>;
+    return R as unknown as Self & ResourceClass<Type>;
   };

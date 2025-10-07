@@ -3,30 +3,48 @@ import * as Effect from "effect/Effect";
 import type * as HKT from "effect/HKT";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Binding, type BindingTag } from "./binding.ts";
-import { Capability } from "./capability.ts";
+import { Binding } from "./binding.ts";
+import { Capability, type CapabilityClass } from "./capability.ts";
 import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
-// AWS Lambda Function (Binding)
-export const Lambda = <Cap extends Capability>(Cap: Cap) =>
-  Binding("AWS.Lambda.Function", Cap)<Lambda<Cap>>();
+export interface LambdaRuntime
+  extends Runtime<{
+    memory: number;
+    timeout: number;
+    runtime: "nodejs20x" | "nodejs22x";
+    architecture: "x86_64" | "arm64";
+    main: string;
+    handler: string;
+  }> {
+  readonly type: Lambda<Extract<this["Target"], Capability>>;
+}
+export const Lambda = Runtime("AWS.Lambda.Function")<LambdaRuntime>();
 
-export type Lambda<Cap extends Capability> = BindingTag<
-  Lambda<Cap>,
-  "AWS.Lambda.Function",
-  Cap,
-  {
-    env: Record<string, string>;
-    policyStatements: any[];
-  }
->;
+export interface Lambda<T extends Capability>
+  extends Binding<
+    Lambda<T>,
+    "AWS.Lambda.Function",
+    T,
+    {
+      env: Record<string, string>;
+      policyStatements: any[];
+    }
+  > {}
 
 // Cloudflare Worker (Host)
-export const Worker = <Cap extends Capability>(Cap: Cap) =>
-  Binding("Cloudflare.Worker", Cap)<Worker<Cap>>();
+export interface WorkerRuntime
+  extends Runtime<{
+    main: string;
+    compatibilityDate?: string;
+    compatibilityFlags?: string[];
+    format?: "esm" | "cjs";
+  }> {
+  readonly type: Worker<Extract<this["Target"], Capability>>;
+}
+export const Worker = Runtime("Cloudflare.Worker")<WorkerRuntime>();
 
-export type Worker<Cap extends Capability> = BindingTag<
+export type Worker<Cap extends Capability> = Binding<
   Worker<Cap>,
   "Cloudflare.Worker",
   Cap,
@@ -42,7 +60,6 @@ export type QueueProps<Message = any> = {
   fifo?: boolean;
   schema: S.Schema<Message>;
 };
-
 export const Queue =
   Resource("AWS.SQS.Queue")<
     <const ID extends string, const Props extends QueueProps>(
@@ -50,17 +67,19 @@ export const Queue =
       props: Props,
     ) => Queue<ID, Props>
   >();
-export type Queue<
+
+export interface Queue<
   ID extends string = string,
   Props extends QueueProps = QueueProps,
-> = Resource<
-  "AWS.SQS.Queue",
-  ID,
-  Props,
-  {
-    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-  }
->;
+> extends Resource<
+    "AWS.SQS.Queue",
+    ID,
+    Props,
+    {
+      queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+    },
+    Queue
+  > {}
 
 export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
   body: Data;
@@ -71,8 +90,12 @@ export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
 };
 
 import type * as lambda from "aws-lambda";
+import type { BoundDecl } from "./plan.ts";
+import { allow, attach, type Policy } from "./policy.ts";
 import { Resource } from "./resource.ts";
+import { Runtime } from "./runtime.ts";
 
+// "Pull" function
 export function consume<Q extends Queue, ID extends string, Req>(
   queue: Q,
   id: ID,
@@ -119,23 +142,25 @@ export function consume<Q extends Queue, ID extends string, Req>(
 }
 
 // Consume (Binding)
-export type Consume<Q> = Capability<
-  "AWS.SQS.Consume",
-  Q,
-  <Q>(queue: Q) => Consume<Resource.Instance<Q>>
->;
-export const Consume: Consume<Queue> = Capability("AWS.SQS.Consume", Queue);
+export interface ConsumeClass
+  extends CapabilityClass<"AWS.SQS.Consume", Queue> {
+  readonly type: Consume<Resource.Instance<this["Target"]>>;
+}
+export interface Consume<Q>
+  extends Capability<"AWS.SQS.Consume", Q, ConsumeClass> {}
+export const Consume = Capability("AWS.SQS.Consume", Queue)<ConsumeClass>();
 
 // SendMessage (Binding)
-export type SendMessage<Q> = Capability<
-  "AWS.SQS.SendMessage",
-  Q,
-  <Q>(queue: Q) => SendMessage<Resource.Instance<Q>>
->;
-export const SendMessage: SendMessage<Queue> = Capability(
+export interface SendMessageClass
+  extends CapabilityClass<"AWS.SQS.SendMessage", Queue> {
+  readonly type: SendMessage<Resource.Instance<this["Target"]>>;
+}
+export interface SendMessage<Q>
+  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
+export const SendMessage = Capability(
   "AWS.SQS.SendMessage",
   Queue,
-);
+)<SendMessageClass>();
 
 export declare const sendMessage: <Q extends Queue>(
   queue: Q,
@@ -230,21 +255,11 @@ export const serve = <const ID extends string, Req>(
   handler: (req: Request) => Effect.Effect<Response, never, Req>,
 ) => Service(id, handler);
 
-const echo = serve(
-  "echo",
-  Effect.fn(function* (req) {
-    yield* sendMessage(Messages, {
-      id: 1,
-      value: "test",
-    });
-    return new Response(req.body, req);
-  }),
-);
-
 const messageConsumer = consume(
   Messages,
-  "messageConsumer",
+  "MessageConsumer",
   Effect.fn(function* (event) {
+    const fs = yield* FileSystem.FileSystem;
     for (const record of event.Records) {
       yield* sendMessage(Messages, record.body);
     }
@@ -254,16 +269,112 @@ const messageConsumer = consume(
   }),
 );
 
-export interface FlatMap<F extends HKT.TypeLambda> extends HKT.TypeClass<F> {
-  readonly flatMap: {
-    <A, R2, O2, E2, B>(
-      f: (a: A) => HKT.Kind<F, R2, O2, E2, B>,
-    ): <R1, O1, E1>(
-      self: HKT.Kind<F, R1, O1, E1, A>,
-    ) => HKT.Kind<F, R1 & R2, O1 | O2, E1 | E2, B>;
-    <R1, O1, E1, A, R2, O2, E2, B>(
-      self: HKT.Kind<F, R1, O1, E1, A>,
-      f: (a: A) => HKT.Kind<F, R2, O2, E2, B>,
-    ): HKT.Kind<F, R1 & R2, O1 | O2, E1 | E2, B>;
+// AWS Lambda Function (Binding)
+
+export const make = <Run extends Runtime, Svc extends Service>(
+  runtime: Run,
+  svc: Svc,
+  bindings: Policy<
+    Extract<
+      Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
+      Capability
+    >
+  >,
+  props: Run["Props"],
+) => {
+  type Cap = Extract<
+    Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
+    Capability
+  >;
+  const eff = Effect.gen(function* () {
+    return {
+      ...(Object.fromEntries(
+        bindings?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
+          [],
+      ) as {
+        [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
+      }),
+      [svc.id]: {
+        type: "bound",
+        svc,
+        bindings: bindings?.capabilities.map(runtime) ?? [],
+        // TODO(sam): this should be passed to an Effect that interacts with the Provider
+        props: {
+          // ...self.props,
+          main,
+          handler,
+        },
+      } satisfies BoundDecl<Svc, Cap>,
+    };
+  });
+
+  const clss: any = class {};
+  Object.assign(clss, eff);
+  clss.pipe = eff.pipe.bind(eff);
+
+  type Plan = {
+    [id in Svc["id"]]: BoundDecl<Resource.Instance<Svc>, Cap>;
+  } & {
+    [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
+      Cap["Resource"],
+      { ID: id }
+    >;
   };
-}
+
+  type Kind<Class extends HKT.TypeLambda, A> = HKT.Kind<
+    Class,
+    unknown,
+    never,
+    never,
+    A
+  >;
+
+  // force distribution of the Run type over each Capability
+  type F<C> = C extends {
+    Resource: {
+      Parent: infer P;
+    };
+    Class: infer Class extends HKT.TypeLambda;
+  }
+    ? Kind<Run, Kind<Class, P>>
+    : never;
+
+  return clss as any as Effect.Effect<
+    {
+      [k in keyof Plan]: Plan[k];
+    },
+    never,
+    F<Cap>
+  >;
+};
+
+class EchoService extends serve(
+  "echo",
+  Effect.fn(function* (req) {
+    yield* allow<Consume<Messages>>();
+    yield* sendMessage(Messages, {
+      id: 1,
+      value: "test",
+    });
+    return new Response(req.body, req);
+  }),
+) {}
+
+Consume(Messages).Resource.Parent;
+
+const bar = make(
+  Lambda,
+  EchoService,
+  attach(SendMessage(Messages), Consume(Messages)),
+  {
+    main: "./src/index.ts",
+    handler: "index.handler",
+    memory: 1024,
+    timeout: 300,
+    runtime: "nodejs20x",
+    architecture: "x86_64",
+  },
+);
+
+declare const foo: Consume<Messages>;
+foo.Resource.Parent;

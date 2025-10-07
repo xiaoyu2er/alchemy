@@ -3,7 +3,7 @@ import type * as Effect from "effect/Effect";
 import type { Capability } from "./capability.ts";
 import type { Resource, ResourceProps } from "./resource.ts";
 
-export interface BindingTag<
+export interface Binding<
   Self,
   Name extends string,
   Cap extends Capability,
@@ -11,7 +11,7 @@ export interface BindingTag<
 > extends Context.TagClass<
     Self,
     `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Name})`,
-    Binding<Cap["Resource"], Props>
+    BindingService<Cap["Resource"], Props>
   > {}
 
 export const Binding =
@@ -27,14 +27,14 @@ export const Binding =
     Object.assign(
       Context.Tag(
         `${Cap.Verb}(${Cap.Resource.Type.Name}, ${Runtime})` as `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Runtime})`,
-      )<Self, Binding<Cap["Resource"]["Type"], Props>>(),
+      )<Self, BindingService<Cap["Resource"]["Type"], Props>>(),
       {
         Kind: "Binding",
         Capability: Cap,
       },
     ) as Self;
 
-export type Binding<
+export type BindingService<
   R extends Resource = Resource,
   Props extends ResourceProps = ResourceProps,
   AttachReq = any,

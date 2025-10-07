@@ -15,6 +15,7 @@ export type Service<
   id: ID;
   impl: Handler;
   capability: Cap;
+  new (_: never): Service<ID, Handler, Cap>;
 };
 
 export const Service = <
@@ -25,9 +26,10 @@ export const Service = <
   id: ID,
   impl: Handler,
   capability?: Cap,
-): Service<ID, Handler, Cap> => ({
-  kind: "Service",
-  id,
-  impl,
-  capability: capability!,
-});
+): Service<ID, Handler, Cap> =>
+  ({
+    kind: "Service",
+    id,
+    impl,
+    capability: capability!,
+  }) as Service<ID, Handler, Cap>;

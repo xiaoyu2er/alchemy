@@ -1,9 +1,10 @@
 import * as Effect from "effect/Effect";
+import type { Capability } from "./capability.ts";
 import type { Resource as _Resource } from "./resource.ts";
 
 // A policy is invariant over its allowed actions
-export interface Policy<in out Statements extends Statement = any> {
-  readonly statements: Statements[];
+export interface Policy<in out Caps extends Capability = any> {
+  readonly capabilities: Caps[];
 }
 
 export type SerializedStatement<S extends Statement = Statement> = Omit<
@@ -41,26 +42,11 @@ export interface Allow<
   binding: Binding;
 }
 
-// export interface Deny<
-//   Action extends string,
-//   Resource extends _Resource,
-//   Condition = any,
-//   Binding = any,
-// > {
-//   sid?: string;
-//   label: string;
-//   effect: "Deny";
-//   action: Action;
-//   resource: Resource;
-//   condition?: Condition;
-//   // binding: Binding;
-// }
-
 export const allow = <S extends Statement>() =>
   Effect.gen(function* () {}) as Effect.Effect<void, never, S>;
 
-export const attach = <S extends Statement[]>(
-  ...statement: S
+export const attach = <S extends any[]>(
+  ...capabilities: S
 ): Policy<S[number]> => ({
-  statements: statement,
+  capabilities,
 });
