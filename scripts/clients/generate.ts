@@ -3,41 +3,52 @@ import {
   defineConfig,
   type UserConfig,
 } from "@hey-api/openapi-ts";
+import fs from "node:fs/promises";
 import path from "node:path";
-import { patchNeonResponseTypes } from "./neon.ts";
 
-export const clients = ["neon", "planetscale", "clickhouse"] as const;
+export const generate = async (filter: string | undefined) => {
+  const clients = await fs
+    .readdir(__dirname)
+    .then((files) =>
+      files
+        .map((file) => file.replace(".ts", ""))
+        .filter((file) => file !== "generate" && file !== "utils"),
+    );
 
-export const generate = async () => {
-  await patchBiomeConfig();
+  await patchBiomeConfig(clients);
+
+  const selected: Array<{ name: string; patch?: () => Promise<void> }> = [];
 
   // 1. Generate clients
-  for (const client of clients) {
+  for (const client of clients.filter((client) =>
+    filter ? client === filter : true,
+  )) {
     const input = (await import(`./${client}.ts`)) as {
       default: UserConfig;
+      patch?: () => Promise<void>;
     };
     const config = await defineConfig(input.default);
     await createClient(config);
+    selected.push({ name: client, patch: input.patch });
   }
 
   // 2. Move shared code to util/api
   const $ = Bun.$.cwd(path.join(process.cwd(), "alchemy"));
   await $`rm -rf src/util/api`;
   await $`mkdir -p src/util/api`;
-  await $`mv src/${clients[0]}/api/client/ src/${clients[0]}/api/core/ src/util/api/`;
+  await $`mv src/${selected[0].name}/api/client/ src/${selected[0].name}/api/core/ src/util/api/`;
   await $`bunx biome check src/util/api --write`;
 
   // 3. Remove unused code
-  for (const client of clients.slice(1)) {
+  for (const client of selected.slice(1)) {
     await $`rm -rf src/${client}/api/client/ src/${client}/api/core/`;
   }
 
-  await patchNeonResponseTypes();
-
   // 4. Update imports
-  for (const client of clients) {
-    await patchClientImports(client);
-    await $`bunx biome check src/${client}/api --write`;
+  for (const client of selected) {
+    await patchClientImports(client.name);
+    if (client.patch) await client.patch();
+    await $`bunx biome check src/${client.name}/api --write`;
   }
 };
 
@@ -49,7 +60,7 @@ const patchClientImports = async (client: string) => {
   }
 };
 
-const patchBiomeConfig = async () => {
+const patchBiomeConfig = async (clients: string[]) => {
   const root = path.join(import.meta.dirname, "..", "..");
   const file = Bun.file(path.join(root, "biome.json"));
   const json = (await file.json()) as { files: { includes: string[] } };
@@ -64,5 +75,6 @@ const patchBiomeConfig = async () => {
 };
 
 if (import.meta.main) {
-  await generate();
+  const filter = process.argv[2];
+  await generate(filter);
 }

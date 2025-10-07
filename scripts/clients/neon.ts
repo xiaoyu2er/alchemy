@@ -28,7 +28,7 @@ export default {
   ],
 } satisfies UserConfig;
 
-export const patchNeonResponseTypes = async () => {
+export const patch = async () => {
   // Neon includes the `GeneralError` type as the default for all operations.
   // Hey API includes it in both the success and error response types, but we only want it in the error response types.
   // So, this removes it from the success response types.
