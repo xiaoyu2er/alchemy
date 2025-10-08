@@ -5,6 +5,10 @@ description: Learn how to create and manage Cloudflare Account API Tokens using 
 
 Creates a [Cloudflare API Token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with specified permissions and access controls. Account API Tokens are the primary way to generate S3-compatible credentials for R2 storage, enabling pre-signed URLs and direct S3 API access.
 
+:::caution
+Account API Tokens can not be created with OAuth tokens because of a Cloudflare limitation. use the Global API Key or an API Token instead. See the [Cloudflare Auth guide](/guides/cloudflare) for more details.
+:::
+
 ## Minimal Example
 
 Create a basic API token with read-only permissions for zones.
