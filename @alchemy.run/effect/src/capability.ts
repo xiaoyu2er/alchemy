@@ -9,7 +9,11 @@ export interface CapabilityClass<Verb extends string = string, Res = any>
   <T>(T: T): HKT.Kind<this, never, never, never, T>;
 }
 
-export type Capability<Verb extends string = string, Res = any, Class = any> = {
+export type Capability<
+  Verb extends string = string,
+  Res = any,
+  Class extends HKT.TypeLambda = HKT.TypeLambda,
+> = {
   /**
    * ID uniquely identifying this statement
    *

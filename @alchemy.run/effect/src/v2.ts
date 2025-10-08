@@ -19,6 +19,7 @@ export interface LambdaRuntime
   }> {
   readonly type: Lambda<Extract<this["Target"], Capability>>;
 }
+
 export const Lambda = Runtime("AWS.Lambda.Function")<LambdaRuntime>();
 
 export interface Lambda<T extends Capability>
@@ -55,31 +56,26 @@ export type Worker<Cap extends Capability> = Binding<
   }
 >;
 
-// SQS Queue (Resource)
 export type QueueProps<Message = any> = {
   fifo?: boolean;
   schema: S.Schema<Message>;
 };
-export const Queue =
-  Resource("AWS.SQS.Queue")<
-    <const ID extends string, const Props extends QueueProps>(
-      id: ID,
-      props: Props,
-    ) => Queue<ID, Props>
-  >();
 
-export interface Queue<
+// SQS Queue (Resource)
+export class Queue<
   ID extends string = string,
   Props extends QueueProps = QueueProps,
-> extends Resource<
-    "AWS.SQS.Queue",
-    ID,
-    Props,
-    {
-      queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-    },
-    Queue
-  > {}
+> extends Resource("AWS.SQS.Queue") {
+  declare Attr: {
+    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+  };
+  constructor(
+    readonly ID: ID,
+    readonly Props: Props,
+  ) {
+    super(ID, Props);
+  }
+}
 
 export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
   body: Data;
@@ -91,7 +87,7 @@ export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
 
 import type * as lambda from "aws-lambda";
 import type { BoundDecl } from "./plan.ts";
-import { allow, attach, type Policy } from "./policy.ts";
+import { attach, type Policy } from "./policy.ts";
 import { Resource } from "./resource.ts";
 import { Runtime } from "./runtime.ts";
 
@@ -242,7 +238,7 @@ export const lambdaSendSQSMessage = Layer.effect(
 );
 
 // example resource
-class Messages extends Queue("messages", {
+class Messages extends Queue.create("messages", {
   fifo: true,
   schema: S.Struct({
     id: S.Int,
@@ -297,7 +293,8 @@ export const make = <Run extends Runtime, Svc extends Service>(
       [svc.id]: {
         type: "bound",
         svc,
-        bindings: bindings?.capabilities.map(runtime) ?? [],
+        bindings:
+          bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
         // TODO(sam): this should be passed to an Effect that interacts with the Provider
         props: {
           // ...self.props,
@@ -329,29 +326,21 @@ export const make = <Run extends Runtime, Svc extends Service>(
     A
   >;
 
-  // force distribution of the Run type over each Capability
-  type F<C> = C extends {
-    Resource: {
-      Parent: infer P;
-    };
-    Class: infer Class extends HKT.TypeLambda;
-  }
-    ? Kind<Run, Kind<Class, P>>
-    : never;
-
-  return clss as any as Effect.Effect<
+  return clss as Effect.Effect<
     {
       [k in keyof Plan]: Plan[k];
     },
     never,
-    F<Cap>
+    // distribute over each capability class and compute Runtime<Capability<Resource.class>
+    Cap["Class"] extends any
+      ? Kind<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
+      : never
   >;
 };
 
 class EchoService extends serve(
   "echo",
   Effect.fn(function* (req) {
-    yield* allow<Consume<Messages>>();
     yield* sendMessage(Messages, {
       id: 1,
       value: "test",
@@ -360,21 +349,14 @@ class EchoService extends serve(
   }),
 ) {}
 
-Consume(Messages).Resource.Parent;
-
-const bar = make(
-  Lambda,
-  EchoService,
-  attach(SendMessage(Messages), Consume(Messages)),
-  {
-    main: "./src/index.ts",
-    handler: "index.handler",
-    memory: 1024,
-    timeout: 300,
-    runtime: "nodejs20x",
-    architecture: "x86_64",
-  },
-);
+const bar = make(Lambda, EchoService, attach(SendMessage(Messages)), {
+  main: "./src/index.ts",
+  handler: "index.handler",
+  memory: 1024,
+  timeout: 300,
+  runtime: "nodejs20x",
+  architecture: "x86_64",
+});
 
 declare const foo: Consume<Messages>;
 foo.Resource.Parent;

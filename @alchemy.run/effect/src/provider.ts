@@ -8,7 +8,7 @@ export type Provider<R extends Resource> = Context.TagClass<
   ProviderService<R>
 >;
 export const Provider = <R extends ResourceClass>(R: R) => {
-  return Context.Tag(R.Type)() as Provider<Extract<ReturnType<R>, Resource>>;
+  return Context.Tag(R.Type)() as Provider<InstanceType<R>>;
 };
 
 export type Diff =
