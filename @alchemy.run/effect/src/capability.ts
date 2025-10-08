@@ -10,31 +10,31 @@ export interface CapabilityClass<Verb extends string = string, Res = any>
 }
 
 export type Capability<
-  Verb extends string = string,
+  Action extends string = string,
   Res = any,
   Class extends HKT.TypeLambda = HKT.TypeLambda,
 > = {
   /**
    * ID uniquely identifying this statement
    *
-   * @default ${effect}:${action}:${resource.id}
+   * @default ${action}:${resource.id}
    */
   Sid?: string;
   Label: string;
   Kind: "Capability";
-  Verb: Verb;
+  Action: Action;
   Resource: Res; //Extract<Res, Resource | ResourceClass>;
   Class: Class;
 };
 
 export const Capability =
-  <const Verb extends string, Res = any>(verb: Verb, resource: Res) =>
-  <Self extends CapabilityClass<Verb, any>>() => {
-    const res = resource as Resource | ResourceClass;
+  <const Action extends string, Res = any>(Action: Action, Res: Res) =>
+  <Self extends CapabilityClass<Action, any>>() => {
+    const res = Res as Resource | ResourceClass;
     const label =
       res.Kind === "ResourceClass"
-        ? `${verb}(${res.Type})`
-        : `${verb}(${res.ID})`;
+        ? `${Action}(${res.Type})`
+        : `${Action}(${res.ID})`;
     return Object.assign(
       (resource: Resource | ResourceClass, props?: ResourceProps) => ({
         resource,
@@ -42,8 +42,8 @@ export const Capability =
       }),
       {
         Kind: "Capability",
-        Verb: verb,
-        Resource: resource,
+        Action: Action,
+        Resource: Res,
         Ctor: undefined!,
         Label: label,
         Sid: label, // TODO(sam): should this be different

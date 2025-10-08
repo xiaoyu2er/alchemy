@@ -1,60 +1,62 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
-import type * as HKT from "effect/HKT";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Binding } from "./binding.ts";
 import { Capability, type CapabilityClass } from "./capability.ts";
 import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
+import type * as lambda from "aws-lambda";
+import { bind } from "./bind.ts";
+import { plan } from "./plan.ts";
+import { attach } from "./policy.ts";
+import { Resource } from "./resource.ts";
+import { RuntimeClass, type Runtime } from "./runtime.ts";
+
 export interface LambdaRuntime
-  extends Runtime<{
-    memory: number;
-    timeout: number;
-    runtime: "nodejs20x" | "nodejs22x";
-    architecture: "x86_64" | "arm64";
-    main: string;
-    handler: string;
-  }> {
-  readonly type: Lambda<Extract<this["Target"], Capability>>;
-}
-
-export const Lambda = Runtime("AWS.Lambda.Function")<LambdaRuntime>();
-
-export interface Lambda<T extends Capability>
-  extends Binding<
-    Lambda<T>,
+  extends RuntimeClass<
     "AWS.Lambda.Function",
-    T,
+    {
+      main: string;
+      handler?: string;
+      memory?: number;
+      timeout?: number;
+      runtime?: "nodejs20x" | "nodejs22x";
+      architecture?: "x86_64" | "arm64";
+    },
     {
       env: Record<string, string>;
       policyStatements: any[];
     }
-  > {}
+  > {
+  readonly type: Lambda<this["Target"]>;
+}
+
+export const Lambda = RuntimeClass("AWS.Lambda.Function")<LambdaRuntime>();
+
+export interface Lambda<A> extends Runtime<A, LambdaRuntime> {}
 
 // Cloudflare Worker (Host)
 export interface WorkerRuntime
-  extends Runtime<{
-    main: string;
-    compatibilityDate?: string;
-    compatibilityFlags?: string[];
-    format?: "esm" | "cjs";
-  }> {
-  readonly type: Worker<Extract<this["Target"], Capability>>;
+  extends RuntimeClass<
+    "Cloudflare.Worker",
+    {
+      main: string;
+      compatibilityDate?: string;
+      compatibilityFlags?: string[];
+      format?: "esm" | "cjs";
+    },
+    {
+      bindings: {
+        [key: string]: any;
+      };
+    }
+  > {
+  readonly type: Worker<this["Target"]>;
 }
-export const Worker = Runtime("Cloudflare.Worker")<WorkerRuntime>();
+export const Worker = RuntimeClass("Cloudflare.Worker")<WorkerRuntime>();
 
-export type Worker<Cap extends Capability> = Binding<
-  Worker<Cap>,
-  "Cloudflare.Worker",
-  Cap,
-  {
-    bindings: {
-      [key: string]: any;
-    };
-  }
->;
+export interface Worker<A> extends Runtime<A, WorkerRuntime> {}
 
 export type QueueProps<Message = any> = {
   fifo?: boolean;
@@ -84,12 +86,6 @@ export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
 export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
   Records: SQSRecord<Data>[];
 };
-
-import type * as lambda from "aws-lambda";
-import type { BoundDecl } from "./plan.ts";
-import { attach, type Policy } from "./policy.ts";
-import { Resource } from "./resource.ts";
-import { Runtime } from "./runtime.ts";
 
 // "Pull" function
 export function consume<Q extends Queue, ID extends string, Req>(
@@ -184,9 +180,9 @@ export const queueProvider = Layer.succeed(
 
 // bind a Queue to an AWS Lambda function
 export const lambdaQueueEventSource = Layer.effect(
-  Lambda(Consume(Queue)),
+  Lambda(Consume(Queue)).Tag,
   Effect.gen(function* () {
-    return Lambda(Consume(Queue)).of({
+    return Lambda(Consume(Queue)).Tag.of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           env: {
@@ -200,10 +196,10 @@ export const lambdaQueueEventSource = Layer.effect(
 
 // bind a Queue to a Cloudflare Worker
 export const lambdaQueueCloudflareBinding = Layer.effect(
-  Worker(Consume(Queue)),
+  Worker(Consume(Queue)).Tag,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    return Worker(Consume(Queue)).of({
+    return Worker(Consume(Queue)).Tag.of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           bindings: {
@@ -216,9 +212,9 @@ export const lambdaQueueCloudflareBinding = Layer.effect(
 );
 
 export const lambdaSendSQSMessage = Layer.effect(
-  Lambda(SendMessage(Queue)),
+  Lambda(SendMessage(Queue)).Tag,
   Effect.gen(function* () {
-    return Lambda(SendMessage(Queue)).of({
+    return Lambda(SendMessage(Queue)).Tag.of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           policyStatements: [
@@ -266,80 +262,8 @@ const messageConsumer = consume(
 );
 
 // AWS Lambda Function (Binding)
-
-export const make = <Run extends Runtime, Svc extends Service>(
-  runtime: Run,
-  svc: Svc,
-  bindings: Policy<
-    Extract<
-      Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
-      Capability
-    >
-  >,
-  props: Run["Props"],
-) => {
-  type Cap = Extract<
-    Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
-    Capability
-  >;
-  const eff = Effect.gen(function* () {
-    return {
-      ...(Object.fromEntries(
-        bindings?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
-          [],
-      ) as {
-        [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
-      }),
-      [svc.id]: {
-        type: "bound",
-        svc,
-        bindings:
-          bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
-        // TODO(sam): this should be passed to an Effect that interacts with the Provider
-        props: {
-          // ...self.props,
-          main,
-          handler,
-        },
-      } satisfies BoundDecl<Svc, Cap>,
-    };
-  });
-
-  const clss: any = class {};
-  Object.assign(clss, eff);
-  clss.pipe = eff.pipe.bind(eff);
-
-  type Plan = {
-    [id in Svc["id"]]: BoundDecl<Resource.Instance<Svc>, Cap>;
-  } & {
-    [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
-      Cap["Resource"],
-      { ID: id }
-    >;
-  };
-
-  type Kind<Class extends HKT.TypeLambda, A> = HKT.Kind<
-    Class,
-    unknown,
-    never,
-    never,
-    A
-  >;
-
-  return clss as Effect.Effect<
-    {
-      [k in keyof Plan]: Plan[k];
-    },
-    never,
-    // distribute over each capability class and compute Runtime<Capability<Resource.class>
-    Cap["Class"] extends any
-      ? Kind<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
-      : never
-  >;
-};
-
 class EchoService extends serve(
-  "echo",
+  "echo-service",
   Effect.fn(function* (req) {
     yield* sendMessage(Messages, {
       id: 1,
@@ -349,7 +273,7 @@ class EchoService extends serve(
   }),
 ) {}
 
-const bar = make(Lambda, EchoService, attach(SendMessage(Messages)), {
+const echo = bind(Lambda, EchoService, attach(SendMessage(Messages)), {
   main: "./src/index.ts",
   handler: "index.handler",
   memory: 1024,
@@ -358,5 +282,7 @@ const bar = make(Lambda, EchoService, attach(SendMessage(Messages)), {
   architecture: "x86_64",
 });
 
-declare const foo: Consume<Messages>;
-foo.Resource.Parent;
+const echoPlan = plan({
+  phase: "update",
+  resources: [echo],
+});

@@ -1,24 +1,33 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as HKT from "effect/HKT";
 import type { Capability } from "./capability.ts";
-import type { Resource, ResourceProps } from "./resource.ts";
+import type { Resource } from "./resource.ts";
+import type { RuntimeClassLike } from "./runtime.ts";
+
+export interface BindingProps {
+  [key: string]: any;
+}
 
 export interface Binding<
-  Self,
-  Name extends string,
-  Cap extends Capability,
-  Props extends ResourceProps,
+  Ctx extends RuntimeClassLike = any,
+  Name extends string = string,
+  Cap extends Capability = Capability,
 > extends Context.TagClass<
-    Self,
-    `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Name})`,
-    BindingService<Cap["Resource"], Props>
-  > {}
+    HKT.Kind<Ctx, never, never, never, Cap>,
+    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Name})`,
+    BindingService<Cap["Resource"], Ctx["BindingProps"]>
+  > {
+  Ctx: Ctx;
+  Name: Name;
+  Cap: Cap;
+}
 
 export const Binding =
   <
     const Runtime extends string,
     Cap extends Capability,
-    Props extends ResourceProps,
+    Props extends BindingProps,
   >(
     Runtime: Runtime,
     Cap: Cap,
@@ -26,7 +35,7 @@ export const Binding =
   <Self>(): Self =>
     Object.assign(
       Context.Tag(
-        `${Cap.Verb}(${Cap.Resource.Type.Name}, ${Runtime})` as `${Cap["Verb"]}(${Cap["Resource"]["Type"]["Name"]}, ${Runtime})`,
+        `${Cap.Action}(${Cap.Resource.Type.Name}, ${Runtime})` as `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Runtime})`,
       )<Self, BindingService<Cap["Resource"]["Type"], Props>>(),
       {
         Kind: "Binding",
@@ -36,7 +45,7 @@ export const Binding =
 
 export type BindingService<
   R extends Resource = Resource,
-  Props extends ResourceProps = ResourceProps,
+  Props = any,
   AttachReq = any,
   DetachReq = any,
 > = {
@@ -48,4 +57,14 @@ export type BindingService<
     resource: R["Attr"],
     from: Props,
   ) => Effect.Effect<void, never, DetachReq>;
+};
+
+export type SerializedBinding<B extends Binding = Binding> = Omit<
+  B,
+  "resource"
+> & {
+  Resource: {
+    Type: string;
+    ID: string;
+  };
 };

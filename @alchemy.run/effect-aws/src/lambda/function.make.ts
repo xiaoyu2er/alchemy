@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 
 import type {
-  BoundDecl,
+  Bound,
   Policy,
   Service,
   Statement,
@@ -49,7 +49,7 @@ export const make = <S extends Service>(
           main,
           handler,
         },
-      } satisfies BoundDecl<S, Extract<Req, Statement>>,
+      } satisfies Bound<S, Extract<Req, Statement>>,
     };
   });
 
@@ -59,7 +59,7 @@ export const make = <S extends Service>(
   return clss as any as Effect.Effect<
     {
       [id in S["id"]]: S extends Function
-        ? BoundDecl<S, Extract<Req, Statement>>
+        ? Bound<S, Extract<Req, Statement>>
         : S;
     } & {
       [id in Exclude<
