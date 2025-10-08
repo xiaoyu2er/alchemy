@@ -102,23 +102,6 @@ export const Domain = Resource(
   ): Promise<Domain> {
     const resend = createResend(props);
 
-    if (this.phase === "delete") {
-      if (this.output.id) {
-        const { error } = await resend.deleteDomainsByDomainId({
-          path: {
-            domain_id: this.output.id,
-          },
-          throwOnError: false,
-        });
-        if (error && error.status !== 404) {
-          throw new Error(`Failed to delete domain "${id}"`, {
-            cause: error,
-          });
-        }
-      }
-      return this.destroy();
-    }
-
     switch (this.phase) {
       case "create": {
         const { data } = await resend
@@ -214,6 +197,22 @@ export const Domain = Resource(
           tls: props.tls,
           updatedAt: new Date(),
         };
+      }
+      case "delete": {
+        if (this.output.id) {
+          const { error } = await resend.deleteDomainsByDomainId({
+            path: {
+              domain_id: this.output.id,
+            },
+            throwOnError: false,
+          });
+          if (error && error.status !== 404) {
+            throw new Error(`Failed to delete domain "${id}"`, {
+              cause: error,
+            });
+          }
+        }
+        return this.destroy();
       }
     }
   },
