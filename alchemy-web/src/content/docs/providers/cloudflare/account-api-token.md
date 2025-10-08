@@ -28,7 +28,7 @@ const token = await AccountApiToken("readonly-token", {
 
 ## R2 Bucket with Pre-Signed URLs
 
-Create an API token for R2 bucket access and use it to generate pre-signed URLs. This is the recommended way to provide temporary access to R2 objects.
+Create an API token for R2 bucket access and use it to generate pre-signed URLs. 
 
 ```ts
 import { AccountApiToken, R2Bucket } from "alchemy/cloudflare";
@@ -79,68 +79,6 @@ const signedUrl = await getSignedUrl(s3Client, command, {
 });
 
 console.log("Pre-signed URL:", signedUrl);
-```
-
-## R2 Storage in Worker
-
-Bind an R2 bucket directly to a Worker for runtime access, and use an API token for generating pre-signed URLs from within the Worker.
-
-```ts
-import { Worker, AccountApiToken, R2Bucket } from "alchemy/cloudflare";
-
-const bucket = await R2Bucket("storage", {
-  name: "my-storage",
-});
-
-const r2Token = await AccountApiToken("r2-token", {
-  name: "R2 Token for Signed URLs",
-  policies: [
-    {
-      effect: "allow",
-      permissionGroups: ["Workers R2 Storage Read"],
-      resources: {
-        [`com.cloudflare.edge.r2.bucket.${process.env.CLOUDFLARE_ACCOUNT_ID}_default_${bucket.name}`]:
-          "*",
-      },
-    },
-  ],
-});
-
-await Worker("file-server", {
-  name: "file-server",
-  bindings: {
-    BUCKET: bucket,
-    R2_ACCESS_KEY_ID: r2Token.accessKeyId,
-    R2_SECRET_ACCESS_KEY: r2Token.secretAccessKey,
-  },
-  script: `
-    import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-    import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-    
-    export default {
-      async fetch(request, env) {
-        // Generate pre-signed URL
-        const s3 = new S3Client({
-          region: "auto",
-          endpoint: "https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com",
-          credentials: {
-            accessKeyId: env.R2_ACCESS_KEY_ID,
-            secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-          },
-        });
-        
-        const command = new GetObjectCommand({
-          Bucket: "my-storage",
-          Key: "file.pdf",
-        });
-        
-        const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
-        
-        return Response.json({ url: signedUrl });
-      }
-    }
-  `,
-});
 ```
 
 ## With Time and IP Restrictions
