@@ -1,11 +1,11 @@
 import type * as HKT from "effect/HKT";
 import type { Resource, ResourceClass, ResourceProps } from "./resource.ts";
 
-export interface CapabilityClass<Verb extends string = string, Res = any>
+export interface CapabilityType<Action extends string = string, Resource = any>
   extends HKT.TypeLambda {
-  Verb: Verb;
-  Resource: Res;
-  new (_: never): CapabilityClass<Verb, Res>;
+  Action: Action;
+  Resource: Resource;
+  new (_: never): CapabilityType<Action, Resource>;
   <T>(T: T): HKT.Kind<this, never, never, never, T>;
 }
 
@@ -29,7 +29,7 @@ export type Capability<
 
 export const Capability =
   <const Action extends string, Res = any>(Action: Action, Res: Res) =>
-  <Self extends CapabilityClass<Action, any>>() => {
+  <Self extends CapabilityType<Action, any>>() => {
     const res = Res as Resource | ResourceClass;
     const label =
       res.Kind === "ResourceClass"

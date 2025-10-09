@@ -2,19 +2,27 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Capability, type CapabilityClass } from "./capability.ts";
+import { Capability, type CapabilityType } from "./capability.ts";
 import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
 import type * as lambda from "aws-lambda";
 import { bind } from "./bind.ts";
+import { Binding, Bindings } from "./binding.ts";
 import { plan } from "./plan.ts";
-import { attach } from "./policy.ts";
 import { Resource } from "./resource.ts";
-import { RuntimeClass, type Runtime } from "./runtime.ts";
+import { Runtime } from "./runtime.ts";
 
-export interface LambdaRuntime
-  extends RuntimeClass<
+// export interface LambdaFunctionInstance extends TypeLambda {
+//   readonly type: LambdaFunction<this["Target"], this["Input"], this["Output"]>;
+// }
+
+export interface LambdaFunction //<
+  // Svc extends Service = Service,
+  // B extends Binding = Binding,
+  // Props = any,
+  //>
+  extends Runtime<
     "AWS.Lambda.Function",
     {
       main: string;
@@ -23,40 +31,50 @@ export interface LambdaRuntime
       timeout?: number;
       runtime?: "nodejs20x" | "nodejs22x";
       architecture?: "x86_64" | "arm64";
-    },
+      url?: boolean;
+    }
+  > {
+  // readonly instance: LambdaFunctionInstance;
+  readonly type: Lambda<this["Capability"]>;
+}
+
+export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
+
+export interface Lambda<Cap extends Capability>
+  extends Binding<
+    LambdaFunction,
+    Cap,
     {
       env: Record<string, string>;
       policyStatements: any[];
     }
-  > {
-  readonly type: Lambda<this["Target"]>;
-}
-
-export const Lambda = RuntimeClass("AWS.Lambda.Function")<LambdaRuntime>();
-
-export interface Lambda<A> extends Runtime<A, LambdaRuntime> {}
+  > {}
 
 // Cloudflare Worker (Host)
 export interface WorkerRuntime
-  extends RuntimeClass<
+  extends Runtime<
     "Cloudflare.Worker",
     {
       main: string;
       compatibilityDate?: string;
       compatibilityFlags?: string[];
       format?: "esm" | "cjs";
-    },
+    }
+  > {
+  readonly type: Worker<this["Capability"]>;
+}
+export const Worker = Runtime("Cloudflare.Worker")<WorkerRuntime>();
+
+export interface Worker<Cap extends Capability>
+  extends Binding<
+    WorkerRuntime,
+    Cap,
     {
       bindings: {
         [key: string]: any;
       };
     }
-  > {
-  readonly type: Worker<this["Target"]>;
-}
-export const Worker = RuntimeClass("Cloudflare.Worker")<WorkerRuntime>();
-
-export interface Worker<A> extends Runtime<A, WorkerRuntime> {}
+  > {}
 
 export type QueueProps<Message = any> = {
   fifo?: boolean;
@@ -134,25 +152,24 @@ export function consume<Q extends Queue, ID extends string, Req>(
 }
 
 // Consume (Binding)
-export interface ConsumeClass
-  extends CapabilityClass<"AWS.SQS.Consume", Queue> {
+export interface ConsumeClass extends CapabilityType<"AWS.SQS.Consume", Queue> {
   readonly type: Consume<Resource.Instance<this["Target"]>>;
 }
+export const Consume = Capability("AWS.SQS.Consume", Queue)<ConsumeClass>();
 export interface Consume<Q>
   extends Capability<"AWS.SQS.Consume", Q, ConsumeClass> {}
-export const Consume = Capability("AWS.SQS.Consume", Queue)<ConsumeClass>();
 
 // SendMessage (Binding)
 export interface SendMessageClass
-  extends CapabilityClass<"AWS.SQS.SendMessage", Queue> {
+  extends CapabilityType<"AWS.SQS.SendMessage", Queue> {
   readonly type: SendMessage<Resource.Instance<this["Target"]>>;
 }
-export interface SendMessage<Q>
-  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
 export const SendMessage = Capability(
   "AWS.SQS.SendMessage",
   Queue,
 )<SendMessageClass>();
+export interface SendMessage<Q>
+  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
 
 export declare const sendMessage: <Q extends Queue>(
   queue: Q,
@@ -180,9 +197,9 @@ export const queueProvider = Layer.succeed(
 
 // bind a Queue to an AWS Lambda function
 export const lambdaQueueEventSource = Layer.effect(
-  Lambda(Consume(Queue)).Tag,
+  Lambda(Consume(Queue)),
   Effect.gen(function* () {
-    return Lambda(Consume(Queue)).Tag.of({
+    return Lambda(Consume(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           env: {
@@ -196,10 +213,10 @@ export const lambdaQueueEventSource = Layer.effect(
 
 // bind a Queue to a Cloudflare Worker
 export const lambdaQueueCloudflareBinding = Layer.effect(
-  Worker(Consume(Queue)).Tag,
+  Worker(Consume(Queue)),
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    return Worker(Consume(Queue)).Tag.of({
+    return Worker(Consume(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           bindings: {
@@ -211,10 +228,12 @@ export const lambdaQueueCloudflareBinding = Layer.effect(
   }),
 );
 
+const tag = Lambda(SendMessage(Queue));
+
 export const lambdaSendSQSMessage = Layer.effect(
-  Lambda(SendMessage(Queue)).Tag,
+  Lambda(SendMessage(Queue)),
   Effect.gen(function* () {
-    return Lambda(SendMessage(Queue)).Tag.of({
+    return Lambda(SendMessage(Queue)).of({
       attach: Effect.fn(function* ({ queueUrl }) {
         return {
           policyStatements: [
@@ -247,7 +266,7 @@ export const serve = <const ID extends string, Req>(
   handler: (req: Request) => Effect.Effect<Response, never, Req>,
 ) => Service(id, handler);
 
-const messageConsumer = consume(
+class MessageConsumer extends consume(
   Messages,
   "MessageConsumer",
   Effect.fn(function* (event) {
@@ -259,7 +278,7 @@ const messageConsumer = consume(
       batchItemFailures: [],
     };
   }),
-);
+) {}
 
 // AWS Lambda Function (Binding)
 class EchoService extends serve(
@@ -273,7 +292,7 @@ class EchoService extends serve(
   }),
 ) {}
 
-const echo = bind(Lambda, EchoService, attach(SendMessage(Messages)), {
+const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   main: "./src/index.ts",
   handler: "index.handler",
   memory: 1024,
@@ -281,6 +300,8 @@ const echo = bind(Lambda, EchoService, attach(SendMessage(Messages)), {
   runtime: "nodejs20x",
   architecture: "x86_64",
 });
+
+echo.pipe(Effect.provide(lambdaSendSQSMessage), Effect.runPromise);
 
 const echoPlan = plan({
   phase: "update",

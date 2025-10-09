@@ -1,25 +1,26 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
-import type * as HKT from "effect/HKT";
 import type { Capability } from "./capability.ts";
+import type { Kind } from "./hkt.ts";
+import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
-import type { RuntimeClassLike } from "./runtime.ts";
+import type { RuntimeType } from "./runtime.ts";
 
 export interface BindingProps {
   [key: string]: any;
 }
 
 export interface Binding<
-  Ctx extends RuntimeClassLike = any,
-  Name extends string = string,
+  Type extends RuntimeType = RuntimeType,
   Cap extends Capability = Capability,
+  BindingProps = any,
 > extends Context.TagClass<
-    HKT.Kind<Ctx, never, never, never, Cap>,
-    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Name})`,
-    BindingService<Cap["Resource"], Ctx["BindingProps"]>
+    Kind<Type, Cap>,
+    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Type["Name"]})`,
+    BindingService<Cap["Resource"], BindingProps>
   > {
-  Ctx: Ctx;
-  Name: Name;
+  Type: Type;
+  BindingProps: BindingProps;
   Cap: Cap;
 }
 
@@ -68,3 +69,11 @@ export type SerializedBinding<B extends Binding = Binding> = Omit<
     ID: string;
   };
 };
+
+export type Bindings = ReturnType<typeof Bindings>;
+
+export const Bindings = <S extends any[]>(
+  ...capabilities: S
+): Policy<S[number]> => ({
+  capabilities,
+});

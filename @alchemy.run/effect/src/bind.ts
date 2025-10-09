@@ -1,13 +1,17 @@
 import * as Effect from "effect/Effect";
-import type * as HKT from "effect/HKT";
 import { Capability } from "./capability.ts";
+import type { Kind } from "./hkt.ts";
 import type { Bound } from "./plan.ts";
 import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
-import type { RuntimeClass } from "./runtime.ts";
+import type { Runtime } from "./runtime.ts";
 import { Service } from "./service.ts";
 
-export const bind = <Run extends RuntimeClass, Svc extends Service>(
+export const bind = <
+  Run extends Runtime,
+  Svc extends Service,
+  const Props extends Run["ResourceProps"],
+>(
   runtime: Run,
   svc: Svc,
   bindings: Policy<
@@ -16,7 +20,7 @@ export const bind = <Run extends RuntimeClass, Svc extends Service>(
       Capability
     >
   >,
-  props: Run["Props"],
+  props: Props,
 ) => {
   type Cap = Extract<
     Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
@@ -36,12 +40,8 @@ export const bind = <Run extends RuntimeClass, Svc extends Service>(
         bindings:
           bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
         // TODO(sam): this should be passed to an Effect that interacts with the Provider
-        props: {
-          // ...self.props,
-          main,
-          handler,
-        },
-      } satisfies Bound<Svc, Cap>,
+        props,
+      } satisfies Bound<Run, Svc, Cap, Props>,
     };
   });
 
@@ -49,33 +49,20 @@ export const bind = <Run extends RuntimeClass, Svc extends Service>(
   Object.assign(clss, eff);
   clss.pipe = eff.pipe.bind(eff);
 
-  // Runtime<Capability<Resource.class>>
   type Providers = Cap["Class"] extends any
     ? Kind<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
     : never;
-  // Runtime<Capability<Resource>>
-  // type Bindings = Cap["Class"] extends any
-  //   ? Kind<Run, Kind<Cap["Class"], Cap["Resource"]>>
-  //   : never;
   type Bindings = Cap["Class"] extends any
     ? Kind<Cap["Class"], Cap["Resource"]>
     : never;
   type Plan = {
-    [id in Svc["id"]]: Bound<Kind<Run, Resource.Instance<Svc>>, Bindings>;
+    [id in Svc["id"]]: Bound<Run, Resource.Instance<Svc>, Bindings, Props>;
   } & {
     [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
       Cap["Resource"],
       { ID: id }
     >;
   };
-
-  type Kind<Class extends HKT.TypeLambda, A> = HKT.Kind<
-    Class,
-    unknown,
-    never,
-    never,
-    A
-  >;
 
   return clss as Effect.Effect<
     {

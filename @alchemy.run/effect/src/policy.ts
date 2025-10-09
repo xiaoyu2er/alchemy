@@ -8,9 +8,3 @@ export interface Policy<in out Caps extends Capability = any> {
 
 export const allow = <S extends Capability>() =>
   Effect.gen(function* () {}) as Effect.Effect<void, never, S>;
-
-export const attach = <S extends any[]>(
-  ...capabilities: S
-): Policy<S[number]> => ({
-  capabilities,
-});

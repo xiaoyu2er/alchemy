@@ -4,17 +4,23 @@ import type { Binding, SerializedBinding } from "./binding.ts";
 import type { Phase } from "./phase.ts";
 import type { ProviderService } from "./provider.ts";
 import type { Resource } from "./resource.ts";
+import type { Runtime } from "./runtime.ts";
 import type { Service } from "./service.ts";
 import { State, type ResourceState } from "./state.ts";
 import type { TagInstance } from "./tag-instance.ts";
 
 export type PlanError = never;
 
-export type Bound<Svc = Service, Bindings = Binding> = {
+export type Bound<
+  Run extends Runtime = Runtime,
+  Svc = Service,
+  Bindings = Binding,
+  Props = any,
+> = {
   type: "bound";
   svc: Svc;
   bindings: Bindings[];
-  props: any;
+  props: Props;
 };
 
 export const isBoundDecl = (value: any): value is Bound =>
