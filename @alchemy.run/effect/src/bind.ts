@@ -49,19 +49,13 @@ export const bind = <
   Object.assign(clss, eff);
   clss.pipe = eff.pipe.bind(eff);
 
-  type Providers = Cap["Class"] extends any
-    ? Runtime.Binding<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>> //Runtime.Binding<Run, Cap["Resource"]>
-    : never;
-  type Bindings = Cap["Class"] extends any
-    ? Kind<Cap["Class"], Cap["Resource"]>
-    : never;
   type Plan = {
     [id in Svc["id"]]: Runtime.Instance<
       Run,
       Resource.Instance<Svc>,
-      Bindings,
+      Cap,
       Props
-    >; //Bound<Run, Resource.Instance<Svc>, Bindings, Props>;
+    >;
   } & {
     [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
       Cap["Resource"],
@@ -69,12 +63,16 @@ export const bind = <
     >;
   };
 
+  type Providers<Cap extends Capability> = Cap extends any
+    ? Runtime.Binding<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
+    : never;
+
   return clss as Effect.Effect<
     {
       [k in keyof Plan]: Plan[k];
     },
     never,
     // distribute over each capability class and compute Runtime<Capability<Resource.class>
-    Providers
+    Providers<Cap>
   >;
 };

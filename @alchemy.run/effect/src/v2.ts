@@ -301,12 +301,20 @@ export const lambdaSendSQSMessage = Layer.effect(
   }),
 );
 
-// example resource
-
 export const serve = <const ID extends string, Req>(
   id: ID,
   handler: (req: Request) => Effect.Effect<Response, never, Req>,
 ) => Service(id, handler);
+
+// example resource
+
+class Messages extends Queue.create("messages", {
+  fifo: true,
+  schema: S.Struct({
+    id: S.Int,
+    value: S.String,
+  }),
+}) {}
 
 class MessageConsumer extends consume(
   Messages,
@@ -322,14 +330,6 @@ class MessageConsumer extends consume(
   }),
 ) {}
 
-class Messages extends Queue.create("messages", {
-  fifo: true,
-  schema: S.Struct({
-    id: S.Int,
-    value: S.String,
-  }),
-}) {}
-
 class EchoService extends serve(
   "echo-service",
   Effect.fn(function* (req) {
@@ -340,6 +340,19 @@ class EchoService extends serve(
     return new Response(req.body, req);
   }),
 ) {}
+
+const consumer = bind(
+  Worker,
+  MessageConsumer,
+  Bindings(SendMessage(Messages), Consume(Messages)),
+  {
+    main: "./src/index.ts",
+    handler: "index.handler",
+    runtime: "nodejs20x",
+    architecture: "arm64",
+    url: true,
+  },
+);
 
 const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   main: "./src/index.ts",
