@@ -10,7 +10,7 @@ import { Service } from "./service.ts";
 export const bind = <
   Run extends Runtime,
   Svc extends Service,
-  const Props extends Run["ResourceProps"],
+  const Props extends Run["InputProps"],
 >(
   runtime: Run,
   svc: Svc,
@@ -50,13 +50,18 @@ export const bind = <
   clss.pipe = eff.pipe.bind(eff);
 
   type Providers = Cap["Class"] extends any
-    ? Kind<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
+    ? Runtime.Binding<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>> //Runtime.Binding<Run, Cap["Resource"]>
     : never;
   type Bindings = Cap["Class"] extends any
     ? Kind<Cap["Class"], Cap["Resource"]>
     : never;
   type Plan = {
-    [id in Svc["id"]]: Bound<Run, Resource.Instance<Svc>, Bindings, Props>;
+    [id in Svc["id"]]: Runtime.Instance<
+      Run,
+      Resource.Instance<Svc>,
+      Bindings,
+      Props
+    >; //Bound<Run, Resource.Instance<Svc>, Bindings, Props>;
   } & {
     [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
       Cap["Resource"],

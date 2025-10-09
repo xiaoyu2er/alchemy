@@ -17,25 +17,38 @@ import { Runtime } from "./runtime.ts";
 //   readonly type: LambdaFunction<this["Target"], this["Input"], this["Output"]>;
 // }
 
-export interface LambdaFunction //<
-  // Svc extends Service = Service,
-  // B extends Binding = Binding,
-  // Props = any,
-  //>
-  extends Runtime<
-    "AWS.Lambda.Function",
+export type LambdaFunctionProps = {
+  main: string;
+  handler?: string;
+  memory?: number;
+  runtime?: "nodejs20x" | "nodejs22x";
+  architecture?: "x86_64" | "arm64";
+  url?: boolean;
+};
+
+export type LambdaFunctionAttr<Props extends LambdaFunctionProps> = {
+  readonly functionName: string;
+  readonly functionUrl: Props["url"] extends true ? string : undefined;
+};
+
+export interface LambdaFunction<
+  Svc extends Service = Service,
+  Cap extends Capability = Capability,
+  Props extends LambdaFunctionProps = LambdaFunctionProps,
+  Output = any,
+> extends Runtime<"AWS.Lambda.Function"> {
+  readonly Instance: LambdaFunction<
+    Extract<this["Svc"], Service>,
+    Extract<this["Cap"], Capability>,
+    Extract<this["Props"], LambdaFunctionProps>,
     {
-      main: string;
-      handler?: string;
-      memory?: number;
-      timeout?: number;
-      runtime?: "nodejs20x" | "nodejs22x";
-      architecture?: "x86_64" | "arm64";
-      url?: boolean;
+      [key in keyof LambdaFunctionAttr<
+        Extract<this["Props"], Props>
+      >]: LambdaFunctionAttr<Extract<this["Props"], Props>>[key];
     }
-  > {
-  // readonly instance: LambdaFunctionInstance;
-  readonly type: Lambda<this["Capability"]>;
+  >;
+  readonly Binding: Lambda<Extract<this["Cap"], Capability>>;
+  readonly InputProps: Props;
 }
 
 export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
@@ -51,23 +64,44 @@ export interface Lambda<Cap extends Capability>
   > {}
 
 // Cloudflare Worker (Host)
-export interface WorkerRuntime
-  extends Runtime<
-    "Cloudflare.Worker",
+export type WorkerProps = {
+  main: string;
+  compatibilityDate?: string;
+  compatibilityFlags?: string[];
+  format?: "esm" | "cjs";
+  url?: boolean;
+};
+
+export type WorkerAttr<Props extends WorkerProps> = {
+  readonly scriptName: string;
+  readonly url: Props["url"] extends false ? undefined : string;
+};
+
+export interface WorkerScript<
+  Svc extends Service = Service,
+  Cap extends Capability = Capability,
+  Props extends WorkerProps = WorkerProps,
+  Output = any,
+> extends Runtime<"Cloudflare.Worker"> {
+  readonly Instance: WorkerScript<
+    Extract<this["Svc"], Service>,
+    Extract<this["Cap"], Capability>,
+    Extract<this["Props"], WorkerProps>,
     {
-      main: string;
-      compatibilityDate?: string;
-      compatibilityFlags?: string[];
-      format?: "esm" | "cjs";
+      [key in keyof WorkerAttr<Extract<this["Props"], Props>>]: WorkerAttr<
+        Extract<this["Props"], Props>
+      >[key];
     }
-  > {
-  readonly type: Worker<this["Capability"]>;
+  >;
+  readonly Binding: Worker<Extract<this["Cap"], Capability>>;
+  readonly InputProps: Props;
 }
-export const Worker = Runtime("Cloudflare.Worker")<WorkerRuntime>();
+
+export const Worker = Runtime("Cloudflare.Worker")<WorkerScript>();
 
 export interface Worker<Cap extends Capability>
   extends Binding<
-    WorkerRuntime,
+    WorkerScript,
     Cap,
     {
       bindings: {
@@ -228,6 +262,21 @@ export const lambdaQueueCloudflareBinding = Layer.effect(
   }),
 );
 
+export const workerSendSQSMessage = Layer.effect(
+  Worker(SendMessage(Queue)),
+  Effect.gen(function* () {
+    return Worker(SendMessage(Queue)).of({
+      attach: Effect.fn(function* ({ queueUrl }) {
+        return {
+          bindings: {
+            QUEUE: queueUrl,
+          },
+        };
+      }),
+    });
+  }),
+);
+
 const tag = Lambda(SendMessage(Queue));
 
 export const lambdaSendSQSMessage = Layer.effect(
@@ -253,13 +302,6 @@ export const lambdaSendSQSMessage = Layer.effect(
 );
 
 // example resource
-class Messages extends Queue.create("messages", {
-  fifo: true,
-  schema: S.Struct({
-    id: S.Int,
-    value: S.String,
-  }),
-}) {}
 
 export const serve = <const ID extends string, Req>(
   id: ID,
@@ -280,7 +322,14 @@ class MessageConsumer extends consume(
   }),
 ) {}
 
-// AWS Lambda Function (Binding)
+class Messages extends Queue.create("messages", {
+  fifo: true,
+  schema: S.Struct({
+    id: S.Int,
+    value: S.String,
+  }),
+}) {}
+
 class EchoService extends serve(
   "echo-service",
   Effect.fn(function* (req) {
@@ -295,13 +344,15 @@ class EchoService extends serve(
 const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   main: "./src/index.ts",
   handler: "index.handler",
-  memory: 1024,
-  timeout: 300,
   runtime: "nodejs20x",
-  architecture: "x86_64",
+  architecture: "arm64",
+  url: true,
 });
 
-echo.pipe(Effect.provide(lambdaSendSQSMessage), Effect.runPromise);
+const e = await echo.pipe(
+  Effect.provide(lambdaSendSQSMessage),
+  Effect.runPromise,
+);
 
 const echoPlan = plan({
   phase: "update",

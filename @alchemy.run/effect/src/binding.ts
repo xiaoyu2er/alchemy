@@ -1,25 +1,24 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type { Capability } from "./capability.ts";
-import type { Kind } from "./hkt.ts";
 import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
-import type { RuntimeType } from "./runtime.ts";
+import type { Runtime, RuntimeType } from "./runtime.ts";
 
 export interface BindingProps {
   [key: string]: any;
 }
 
 export interface Binding<
-  Type extends RuntimeType = RuntimeType,
+  Run extends RuntimeType = RuntimeType,
   Cap extends Capability = Capability,
   BindingProps = any,
 > extends Context.TagClass<
-    Kind<Type, Cap>,
-    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Type["Name"]})`,
+    Runtime.Binding<Run, Cap>,
+    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Run["Name"]})`,
     BindingService<Cap["Resource"], BindingProps>
   > {
-  Type: Type;
+  Run: Run;
   BindingProps: BindingProps;
   Cap: Cap;
 }
