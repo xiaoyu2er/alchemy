@@ -156,25 +156,3 @@ const token = await AccountApiToken("my-token", {
 console.log("Access Key ID:", token.accessKeyId.unencrypted);
 console.log("Secret Access Key:", token.secretAccessKey.unencrypted);
 ```
-
-## Important Notes
-
-:::tip[Pre-signed URLs]
-Pre-signed URLs are the recommended way to provide temporary access to R2 objects. They're more secure than public access and work with existing S3 tooling.
-:::
-
-:::caution[API Token Requirements]
-Creating Account API Tokens programmatically requires either:
-
-- A Global API Key
-- An API Token with permission to create other API Tokens
-
-See the [Cloudflare setup guide](/guides/cloudflare/#api-token) for more details.
-:::
-
-:::note[Resource Naming]
-When specifying R2 bucket resources, use the format:
-`com.cloudflare.edge.r2.bucket.{accountId}_{jurisdiction}_{bucketName}`
-
-For buckets without a jurisdiction, use `default` as the jurisdiction value.
-:::
