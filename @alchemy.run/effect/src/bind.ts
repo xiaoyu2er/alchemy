@@ -1,43 +1,46 @@
 import * as Effect from "effect/Effect";
+import * as util from "util";
 import { Capability } from "./capability.ts";
 import type { Kind } from "./hkt.ts";
-import type { Bound } from "./plan.ts";
 import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
 import type { Runtime } from "./runtime.ts";
 import { Service } from "./service.ts";
+
+export const isBound = (value: any): value is Bound =>
+  value && typeof value === "object" && value.type === "bound";
+
+export type Bound<Run extends Runtime = Runtime<string, any, any>> = {
+  type: "bound";
+  runtime: Run;
+};
 
 export const bind = <
   Run extends Runtime,
   Svc extends Service,
   const Props extends Run["Props"],
 >(
-  runtime: Run,
-  svc: Svc,
-  bindings: Policy<
+  Run: Run,
+  Svc: Svc,
+  Policy: Policy<
     Extract<
       Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
       Capability
     >
   >,
-  props: Props,
+  Props: Props,
 ) => {
   type Cap = Extract<
     Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
     Capability
   >;
 
+  type Service = Resource.Instance<Svc>;
+
   type Plan = {
     [id in Svc["id"]]: Bound<
-      Run,
-      Resource.Instance<Svc>,
-      Cap,
-      Props,
-      {
-        [k in keyof (Run & { Props: Props })["Attr"]]: (Run & {
-          Props: Props;
-        })["Attr"][k];
-      }
+      // @ts-expect-error
+      (Run & { Svc: Service; Cap: Cap; Props: Props })["Instance"]
     >;
   } & {
     [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
@@ -51,28 +54,35 @@ export const bind = <
     : never;
 
   return Effect.gen(function* () {
+    const self = {
+      ...Run,
+      ID: Svc.id,
+      Service: Svc,
+      Capability: Policy?.capabilities as any,
+      Parent: Run,
+      Props: Props,
+      Attr: undefined!,
+    };
     return {
       ...(Object.fromEntries(
-        bindings?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
+        Policy?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
           [],
       ) as {
         [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
       }),
-      [svc.id]: {
+      [Svc.id]: {
+        runtime: self,
         type: "bound",
-        svc,
-        bindings:
-          bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
-        // TODO(sam): this should be passed to an Effect that interacts with the Provider
-        props,
-        attr: undefined!,
-      } satisfies Bound<
-        Run,
-        Svc,
-        Cap,
-        Props,
-        (Run & { InputProps: Props })["Attr"]
-      >,
+        toString() {
+          return `${self}` as const;
+        },
+        [Symbol.toStringTag]() {
+          return this.toString();
+        },
+        [util.inspect.custom]() {
+          return this.toString();
+        },
+      },
     };
   }) as Effect.Effect<
     {

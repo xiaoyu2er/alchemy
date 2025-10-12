@@ -41,7 +41,7 @@ export const Capability =
         Resource,
         Props,
         toString() {
-          return `${Action}(${Resource}${
+          return `${Action}(${"ID" in Resource ? Resource.ID : Resource.Type}${
             Props
               ? `, ${Object.entries(Props as any)
                   .map(([key, value]) => `${key}: ${value}`)
@@ -66,3 +66,13 @@ export const Capability =
       } as const,
     ) as any as Self;
   };
+
+export type SerializedCapability<B extends Capability = Capability> = Omit<
+  B,
+  "Resource"
+> & {
+  Resource: {
+    Type: string;
+    ID: string;
+  };
+};

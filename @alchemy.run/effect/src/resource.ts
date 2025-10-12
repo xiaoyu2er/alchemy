@@ -12,6 +12,8 @@ export interface ResourceClass<
 > {
   Kind: "ResourceClass";
   Type: Type;
+  Props: unknown;
+  Attr: unknown;
   new (id: string, props: any): Self;
 }
 
@@ -29,13 +31,13 @@ export declare namespace Resource {
         : R;
 }
 
+export type AnyResource = Resource<any, any, any, any, any>;
+
 export interface Resource<
   Type extends ResourceType = ResourceType,
   ID extends ResourceID = ResourceID,
-  // @ts-expect-error
-  Props extends ResourceProps = unknown,
-  // @ts-expect-error
-  Attr extends ResourceAttr = unknown,
+  Props = unknown,
+  Attr = unknown,
   Parent = unknown,
 > {
   Kind: "Resource";
@@ -55,6 +57,8 @@ export const Resource = <const Type extends string>(type: Type) => {
   abstract class R {
     static readonly Type = type;
     static readonly Kind = "ResourceClass";
+    static readonly Props = {} as unknown;
+    static readonly Attr = {} as unknown;
 
     readonly Kind = "Resource";
     readonly Type = type;
@@ -62,6 +66,9 @@ export const Resource = <const Type extends string>(type: Type) => {
       [key: string]: any;
     };
     readonly Class: typeof R = R;
+    static get Parent() {
+      return this;
+    }
 
     constructor(
       readonly ID: string,

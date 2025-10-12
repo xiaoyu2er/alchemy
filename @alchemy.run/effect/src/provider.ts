@@ -1,14 +1,17 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type { Resource, ResourceClass } from "./resource.ts";
+import type { AnyRuntime } from "./runtime.ts";
 
 export type Provider<R extends Resource> = Context.TagClass<
   Provider<R>,
   R["Type"],
   ProviderService<R>
 >;
-export const Provider = <R extends ResourceClass>(R: R) => {
-  return Context.Tag(R.Type)() as Provider<InstanceType<R>>;
+export const Provider = <R extends ResourceClass | AnyRuntime>(R: R) => {
+  return Context.Tag(R.Type)() as Provider<
+    R extends ResourceClass ? InstanceType<R> : R
+  >;
 };
 
 export type Diff =

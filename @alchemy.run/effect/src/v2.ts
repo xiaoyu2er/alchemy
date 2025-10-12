@@ -1,3 +1,4 @@
+import { NodeContext } from "@effect/platform-node";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,11 +8,14 @@ import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
 import type * as lambda from "aws-lambda";
+import { app } from "./app.ts";
 import { bind } from "./bind.ts";
 import { Binding, Bindings } from "./binding.ts";
+import { dotAlchemy } from "./dot-alchemy.ts";
 import { plan } from "./plan.ts";
 import { Resource } from "./resource.ts";
 import { Runtime } from "./runtime.ts";
+import * as State from "./state.ts";
 
 export type LambdaFunctionProps = {
   main: string;
@@ -22,17 +26,29 @@ export type LambdaFunctionProps = {
   url?: boolean;
 };
 
-export type LambdaFunctionAttr<Props> = {
-  readonly functionName: string;
-  readonly functionUrl: Props extends { url: true } ? string : undefined;
-};
-
-export interface LambdaFunction extends Runtime<"AWS.Lambda.Function"> {
+export interface LambdaFunction<
+  Svc = unknown,
+  Cap = unknown,
+  Props = unknown,
+  _Attr = unknown,
+> extends Runtime<"AWS.Lambda.Function", Svc, Cap, Props> {
   readonly Binding: Lambda<this["Capability"]>;
-  readonly Attr: LambdaFunctionAttr<this["Props"]>;
+  readonly Attr: this["Props"] extends { url?: infer url }
+    ? {
+        readonly functionName: string;
+        readonly functionUrl: url extends true ? string : undefined;
+      }
+    : never;
+  readonly Instance: LambdaFunction<
+    this["Service"],
+    this["Capability"],
+    this["Props"],
+    this["Attr"]
+  >;
 }
-
-export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
+export const Lambda = Runtime("AWS.Lambda.Function")<
+  LambdaFunction<unknown, unknown, LambdaFunctionProps>
+>();
 
 export interface Lambda<Cap extends Capability>
   extends Binding<
@@ -44,6 +60,25 @@ export interface Lambda<Cap extends Capability>
     }
   > {}
 
+export const lambdaFunctionProvider = Layer.succeed(
+  Provider(Lambda),
+  Provider(Lambda).of({
+    create: Effect.fn(function* () {
+      return {
+        functionName: "test",
+        functionUrl: "test",
+      };
+    }),
+    update: Effect.fn(function* () {
+      return {
+        functionName: "test",
+        functionUrl: "test",
+      };
+    }),
+    delete: Effect.fn(function* () {}),
+  }),
+);
+
 // Cloudflare Worker (Host)
 export type WorkerProps = {
   main: string;
@@ -53,29 +88,15 @@ export type WorkerProps = {
   url?: boolean;
 };
 
-export type WorkerAttr<Props extends WorkerProps> = {
-  readonly scriptName: string;
-  readonly url: Props["url"] extends false ? undefined : string;
+export type WorkerAttr<Props> = {
+  readonly url: Props extends { url: false } ? undefined : string;
 };
 
-export interface WorkerScript<
-  Svc extends Service = Service,
-  Cap extends Capability = Capability,
-  Props extends WorkerProps = WorkerProps,
-  Output = any,
-> extends Runtime<"Cloudflare.Worker"> {
-  readonly Instance: WorkerScript<
-    Extract<this["Svc"], Service>,
-    Extract<this["Cap"], Capability>,
-    Extract<this["Props"], WorkerProps>,
-    {
-      [key in keyof WorkerAttr<Extract<this["Props"], Props>>]: WorkerAttr<
-        Extract<this["Props"], Props>
-      >[key];
-    }
-  >;
-  readonly Binding: Worker<Extract<this["Cap"], Capability>>;
-  readonly InputProps: Props;
+export interface WorkerScript<Svc = unknown, Cap = Capability>
+  extends Runtime<"Cloudflare.Worker", Svc, Cap> {
+  readonly Binding: Worker<this["Capability"]>;
+  readonly Attr: WorkerAttr<this["Props"]>;
+  readonly Instance: WorkerScript<this["Service"], this["Capability"]>;
 }
 
 export const Worker = Runtime("Cloudflare.Worker")<WorkerScript>();
@@ -111,6 +132,24 @@ export class Queue<
     super(ID, Props);
   }
 }
+export const queueProvider = Layer.succeed(
+  Provider(Queue),
+  Provider(Queue).of({
+    create: Effect.fn(function* () {
+      return {
+        id: "test",
+        queueUrl: "test",
+      };
+    }),
+    update: Effect.fn(function* () {
+      return {
+        id: "test",
+        queueUrl: "test",
+      };
+    }),
+    delete: Effect.fn(function* () {}),
+  }),
+);
 
 export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
   body: Data;
@@ -190,25 +229,6 @@ export declare const sendMessage: <Q extends Queue>(
   queue: Q,
   message: Q["Props"]["schema"]["Type"],
 ) => Effect.Effect<void, never, SendMessage<Resource.Instance<Q>>>;
-
-export const queueProvider = Layer.succeed(
-  Provider(Queue),
-  Provider(Queue).of({
-    create: Effect.fn(function* () {
-      return {
-        id: "test",
-        queueUrl: "test",
-      };
-    }),
-    update: Effect.fn(function* () {
-      return {
-        id: "test",
-        queueUrl: "test",
-      };
-    }),
-    delete: Effect.fn(function* () {}),
-  }),
-);
 
 // bind a Queue to an AWS Lambda function
 export const lambdaQueueEventSource = Layer.effect(
@@ -293,14 +313,14 @@ class Message extends S.Struct({
   value: S.String,
 }) {}
 
-class Messages extends Queue.create("messages", {
+class Messages extends Queue.create("Messages", {
   fifo: true,
   schema: Message,
 }) {}
 
 // Service
 class EchoService extends serve(
-  "echo-service",
+  "EchoService",
   Effect.fn(function* (req) {
     yield* sendMessage(Messages, {
       id: 1,
@@ -336,7 +356,6 @@ const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
 const consumer = bind(
   Lambda,
   MessageConsumer,
-  // sqs:SendMessage and sqs:Consume (IAM Policies)
   Bindings(SendMessage(Messages), Consume(Messages)),
   {
     main: "./src/index.ts",
@@ -347,14 +366,21 @@ const consumer = bind(
   },
 );
 
-const e = await echo.pipe(
-  Effect.provide(lambdaSendSQSMessage),
-  Effect.runPromise,
-);
+// console.log(await echo.pipe(Effect.runPromise));
 
-console.log(e["echo-service"]);
-
-const echoPlan = plan({
-  phase: "update",
-  resources: [echo, consumer],
-});
+if (import.meta.main) {
+  const echoPlan = await plan({
+    phase: "update",
+    resources: [echo],
+  }).pipe(
+    Effect.provide(dotAlchemy),
+    Effect.provide(State.localFs),
+    Effect.provide(app({ name: "my-iae-app", stage: "dev" })),
+    Effect.provide(NodeContext.layer),
+    Effect.provide(lambdaSendSQSMessage),
+    Effect.provide(lambdaFunctionProvider),
+    Effect.provide(queueProvider),
+    Effect.runPromise,
+  );
+  console.log(echoPlan);
+}

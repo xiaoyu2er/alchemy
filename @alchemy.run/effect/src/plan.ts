@@ -1,91 +1,78 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import type { Binding, SerializedBinding } from "./binding.ts";
+import { isBound, type Bound } from "./bind.ts";
+import type { Binding } from "./binding.ts";
+import type { Capability, SerializedCapability } from "./capability.ts";
 import type { Phase } from "./phase.ts";
-import type { ProviderService } from "./provider.ts";
-import type { Resource } from "./resource.ts";
+import { Provider, type ProviderService } from "./provider.ts";
+import type { AnyResource, Resource, ResourceClass } from "./resource.ts";
 import type { Runtime } from "./runtime.ts";
-import type { Service } from "./service.ts";
 import { State, type ResourceState } from "./state.ts";
-import type { TagInstance } from "./tag-instance.ts";
 
 export type PlanError = never;
-
-export type Bound<
-  Run extends Runtime = Runtime,
-  Svc = Service,
-  Bindings = Binding,
-  Props = unknown,
-  Attr = unknown,
-> = {
-  type: "bound";
-  svc: Svc;
-  bindings: Bindings[];
-  props: Props;
-  attr: Attr;
-};
-
-export const isBoundDecl = (value: any): value is Bound =>
-  value && typeof value === "object" && value.type === "bound";
 
 /**
  * A node in the plan that represents a binding operation acting on a resource.
  */
-export type BindNode<B extends Binding = Binding> =
-  | Attach<B>
-  | Detach<B>
-  | NoopBind<B>;
+export type BindNode<Cap extends Capability = Capability> =
+  | Attach<Cap>
+  | Detach<Cap>
+  | NoopBind<Cap>;
 
-export type Attach<B extends Binding = Binding> = {
+export type Attach<Cap extends Capability = Capability> = {
   action: "attach";
-  binding: B;
-  olds?: SerializedBinding<B>;
-  attributes: B["Cap"]["Resource"]["Attr"];
+  capability: Cap;
+  olds?: SerializedCapability<Cap>;
+  attributes: Cap["Resource"]["Attr"];
 };
 
-export type Detach<B extends Binding = Binding> = {
+export type Detach<Cap extends Capability = Capability> = {
   action: "detach";
-  binding: B;
-  attributes: B["Cap"]["Resource"]["Attr"];
+  capability: Cap;
+  attributes: Cap["Resource"]["Attr"];
 };
 
-export type NoopBind<B extends Binding = Binding> = {
+export type NoopBind<Cap extends Capability = Capability> = {
   action: "noop";
-  binding: B;
-  attributes: B["Cap"]["Resource"]["Attr"];
+  capability: Cap;
+  attributes: Cap["Resource"]["Attr"];
 };
 
 /**
  * A node in the plan that represents a resource CRUD operation.
  */
-export type CRUD<R extends Resource = Resource, B extends Binding = Binding> =
-  | Create<R, B>
-  | Update<R, B>
-  | Delete<R, B>
-  | Replace<R, B>
-  | NoopUpdate<R, B>;
+export type CRUD<R extends Resource = Resource> =
+  | Create<R>
+  | Update<R>
+  | Delete<R>
+  | Replace<R>
+  | NoopUpdate<R>;
 
-export type Create<R extends Resource, B extends Binding = Binding> = {
+export type Apply<R extends Resource> =
+  | Create<R>
+  | Update<R>
+  | Replace<R>
+  | NoopUpdate<R>;
+
+export type Create<R extends Resource> = {
   action: "create";
   resource: R;
   news: any;
   provider: ProviderService;
-  bindings: Attach<B>[];
   attributes: R["Attr"];
 };
 
-export type Update<R extends Resource, B extends Binding = Binding> = {
+export type Update<R extends Resource> = {
   action: "update";
   resource: R;
   olds: any;
   news: any;
   output: any;
   provider: ProviderService;
-  bindings: BindNode<B>[];
   attributes: R["Attr"];
 };
 
-export type Delete<R extends Resource, _B extends Binding = Binding> = {
+export type Delete<R extends Resource> = {
   action: "delete";
   resource: R;
   olds: any;
@@ -96,81 +83,70 @@ export type Delete<R extends Resource, _B extends Binding = Binding> = {
   downstream: string[];
 };
 
-export type NoopUpdate<R extends Resource, B extends Binding = Binding> = {
+export type NoopUpdate<R extends Resource> = {
   action: "noop";
   resource: R;
   attributes: R["Attr"];
-  bindings: NoopBind<B>[];
 };
 
-export type Replace<R extends Resource, B extends Binding = Binding> = {
+export type Replace<R extends Resource> = {
   action: "replace";
   resource: R;
   olds: any;
   news: any;
   output: any;
   provider: ProviderService;
-  bindings: BindNode<B>[];
   attributes: R["Attr"];
   deleteFirst?: boolean;
 };
 
-type PlanItem = Effect.Effect<
-  {
-    [id in string]: Bound | Resource;
-  },
-  never,
-  any
->;
+type PlanNode = Bound<any> | Resource;
+type PlanGraph = {
+  [id in string]: PlanNode;
+};
+type PlanGraphEffect = Effect.Effect<PlanGraph, never, unknown>;
 
 type ApplyAll<
-  Items extends PlanItem[],
+  Subgraphs extends PlanGraphEffect[],
   Accum extends Record<string, CRUD> = {},
-> = Items extends [
-  infer Head extends PlanItem,
-  ...infer Tail extends PlanItem[],
+> = Subgraphs extends [
+  infer Head extends PlanGraphEffect,
+  ...infer Tail extends PlanGraphEffect[],
 ]
   ? ApplyAll<
       Tail,
       Accum & {
-        [id in keyof Effect.Effect.Success<Head>]: Apply<
-          Effect.Effect.Success<Head>[id],
-          id extends keyof Accum
-            ? Accum[id]["bindings"][number]["binding"]
-            : never
+        [id in keyof Effect.Effect.Success<Head>]: _Apply<
+          Extract<Effect.Effect.Success<Head>[id], PlanNode>
         >;
       }
     >
   : Accum;
 
-type Apply<T, Cap extends Binding = never> = T extends Bound<
-  infer From,
-  infer Bindings extends Binding
+type _Apply<Item extends PlanNode> = Item extends Bound<
+  infer Run extends Runtime<string, any, any>
 >
-  ? CRUD<From, Bindings | Cap>
-  : T extends Resource
-    ? CRUD<T, Cap>
+  ? Apply<Run>
+  : Item extends Resource
+    ? Apply<Item>
     : never;
 
 type DerivePlan<
   P extends Phase = Phase,
-  Resources extends PlanItem[] = PlanItem[],
+  Resources extends PlanGraphEffect[] = PlanGraphEffect[],
 > = P extends "update"
   ?
       | {
           [k in keyof ApplyAll<Resources>]: ApplyAll<Resources>[k];
         }
       | {
-          [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<
-            Resource,
-            Binding
-          >;
+          [k in Exclude<
+            string,
+            keyof ApplyAll<Resources>
+          >]: Delete<AnyResource>;
         }
   : {
-      [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<
-        Resource,
-        Binding
-      >;
+      [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<AnyResource>;
     };
 
 export type Plan = {
@@ -179,7 +155,7 @@ export type Plan = {
 
 export const plan = <
   const Phase extends "update" | "destroy",
-  const Resources extends PlanItem[],
+  const Resources extends PlanGraphEffect[],
 >({
   phase,
   resources,
@@ -200,11 +176,11 @@ export const plan = <
         (
           resource,
         ): resource is ResourceState & {
-          bindings: SerializedBinding[];
-        } => !!resource?.bindings,
+          capabilities: SerializedCapability[];
+        } => !!resource?.capabilities,
       )
       .flatMap((resource) =>
-        resource.bindings.map((binding) => [binding.resource.id, resource.id]),
+        resource.capabilities.map((cap) => [cap.Resource.ID, resource.id]),
       )
       .reduce(
         (acc, [id, resourceId]) => ({
@@ -227,17 +203,21 @@ export const plan = <
                     (yield* Effect.all(
                       Object.entries(subgraph).map(
                         Effect.fn(function* ([id, node]) {
-                          const resource = isBoundDecl(node) ? node.svc : node;
-                          const statements = isBoundDecl(node)
-                            ? node.bindings
+                          const resource = isBound(node) ? node.runtime : node;
+                          const statements = isBound(node)
+                            ? node.runtime.Capability
                             : [];
-                          const news = isBoundDecl(node)
-                            ? node.props
-                            : resource.props;
+                          const news = isBound(node)
+                            ? node.runtime.Props
+                            : resource.Props;
 
                           const oldState = yield* state.get(id);
-                          const provider: ProviderService =
-                            yield* resource.provider;
+                          if (!resource.Parent) {
+                            console.log({ resource: resource });
+                          }
+                          const provider: ProviderService = yield* Provider(
+                            resource.Parent as ResourceClass,
+                          );
                           const bindings = diffBindings(oldState, statements);
 
                           if (
@@ -251,15 +231,13 @@ export const plan = <
                               resource,
                               // phantom
                               attributes: undefined!,
-                              bindings: bindings as Attach<Binding>[],
-                            } satisfies Create<Resource, Binding>;
+                            } satisfies Create<Resource>;
                           } else if (provider.diff) {
                             const diff = yield* provider.diff({
                               id,
                               olds: oldState.props,
                               news,
                               output: oldState.output,
-                              bindings,
                             });
                             if (diff.action === "noop") {
                               return {
@@ -267,7 +245,6 @@ export const plan = <
                                 resource,
                                 // phantom
                                 attributes: undefined!,
-                                bindings: bindings as NoopBind<Binding>[],
                               };
                             } else if (diff.action === "replace") {
                               return {
@@ -279,7 +256,6 @@ export const plan = <
                                 resource,
                                 // phantom
                                 attributes: undefined!,
-                                bindings: bindings,
                               };
                             } else {
                               return {
@@ -291,17 +267,15 @@ export const plan = <
                                 resource,
                                 // phantom
                                 attributes: undefined!,
-                                bindings: bindings,
                               };
                             }
-                          } else if (compare(oldState, resource.props)) {
+                          } else if (compare(oldState, resource.Props)) {
                             return {
                               action: "update",
                               olds: oldState.props,
                               news,
                               output: oldState.output,
                               provider,
-                              bindings,
                               resource,
                               // phantom
                               attributes: undefined!,
@@ -312,7 +286,6 @@ export const plan = <
                               resource,
                               // phantom
                               attributes: undefined!,
-                              bindings: bindings as NoopBind<Binding>[],
                             };
                           }
                         }),
@@ -322,26 +295,7 @@ export const plan = <
                 }),
               ),
             ),
-          ) as Effect.Effect<
-            {
-              [id in keyof Resources]: Apply<Resources[id]>;
-            }, // & DeleteOrphans<keyof Resources>,
-            PlanError,
-            // | Req
-            | State
-            // extract the providers from the deeply nested resources
-            | {
-                [id in keyof Resources]: Resources[id] extends Bound
-                  ?
-                      | TagInstance<Resources[id]["svc"]["provider"]>
-                      | TagInstance<
-                          Resources[id]["bindings"][number]["Resource"]["provider"]
-                        >
-                  : Resources[id] extends Resource
-                    ? TagInstance<Resources[id]["provider"]>
-                    : never;
-              }[keyof Resources]
-          >
+          )
         : []
     ).reduce((acc, update: any) => ({ ...acc, ...update }), {} as Plan);
 
@@ -372,11 +326,13 @@ export const plan = <
                   // TODO(sam): Support Detach Bindings
                   bindings: [],
                   resource: {
+                    Kind: "Resource",
                     ID: id,
-                    Class: oldState.type,
+                    Parent: undefined,
+                    Type: oldState.type,
+                    // Class: oldState.type,
                     Attr: oldState.output,
                     Props: oldState.props,
-                    provider,
                   },
                   downstream: downstream[id] ?? [],
                 } satisfies Delete<Resource>,
@@ -429,7 +385,7 @@ const diffBindings = (
   bindings: Binding[],
 ) => {
   const actions: BindNode[] = [];
-  const oldBindings = oldState?.bindings;
+  const oldBindings = oldState?.capabilities;
   const oldSids = new Set(oldBindings?.map((binding) => binding.sid));
   for (const binding of bindings) {
     const sid = binding.Sid ?? `${binding.Action}:${binding.Resource.ID}`;
@@ -439,14 +395,14 @@ const diffBindings = (
     if (!oldBinding) {
       actions.push({
         action: "attach",
-        binding: binding,
+        capability: binding,
         // phantom
         attributes: binding.Resource.Attr,
       });
     } else if (isBindingDiff(oldBinding, binding)) {
       actions.push({
         action: "attach",
-        binding: binding,
+        capability: binding,
         olds: oldBinding,
         // phantom
         attributes: binding.Resource.Attr,
@@ -462,6 +418,6 @@ const diffBindings = (
   return actions;
 };
 
-const isBindingDiff = (oldBinding: SerializedBinding, newBinding: Binding) =>
+const isBindingDiff = (oldBinding: SerializedCapability, newBinding: Binding) =>
   oldBinding.Action !== newBinding.Action ||
   oldBinding.Resource.id !== newBinding.Resource.ID;

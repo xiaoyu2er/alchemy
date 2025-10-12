@@ -10,7 +10,7 @@ export interface BindingProps {
 }
 
 export interface Binding<
-  Run extends RuntimeType = RuntimeType,
+  Run extends RuntimeType<string, any, any> = RuntimeType<string, any, any>,
   Cap extends Capability = Capability,
   BindingProps = any,
 > extends Context.TagClass<
@@ -57,16 +57,6 @@ export type BindingService<
     resource: R["Attr"],
     from: Props,
   ) => Effect.Effect<void, never, DetachReq>;
-};
-
-export type SerializedBinding<B extends Binding = Binding> = Omit<
-  B,
-  "resource"
-> & {
-  Resource: {
-    Type: string;
-    ID: string;
-  };
 };
 
 export type Bindings = ReturnType<typeof Bindings>;
