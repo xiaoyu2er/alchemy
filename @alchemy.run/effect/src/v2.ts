@@ -276,8 +276,6 @@ export const workerSendSQSMessage = Layer.effect(
   }),
 );
 
-const tag = Lambda(SendMessage(Queue));
-
 export const lambdaSendSQSMessage = Layer.effect(
   Lambda(SendMessage(Queue)),
   Effect.gen(function* () {
@@ -344,7 +342,7 @@ class MessageConsumer extends consume(
   }),
 ) {}
 
-console.log(Bindings(SendMessage(Messages)));
+// console.log(Bindings(SendMessage(Messages)));
 
 // Materialize Infrastructure
 const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
@@ -375,6 +373,12 @@ const e = await echo.pipe(
 );
 
 console.log(e);
+
+// const L = Lambda(SendMessage(Messages));
+
+// console.log("lambda", L);
+
+// console.log(e);
 // const echoPlan = plan({
 //   phase: "update",
 //   resources: [echo],

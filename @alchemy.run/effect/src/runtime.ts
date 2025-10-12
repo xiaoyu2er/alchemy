@@ -1,4 +1,5 @@
 import type { HKT, Types } from "effect";
+import * as Context from "effect/Context";
 
 export interface RuntimeType<Name extends string = string>
   extends HKT.TypeLambda {
@@ -49,4 +50,5 @@ export interface Runtime<Name extends string = string>
 export const Runtime =
   <const Name extends string>(Name: Name) =>
   <Self>() =>
-    Object.assign(() => {}, { Name }) as Self;
+    (() =>
+      class extends Context.Tag(`Runtime(${Name})`)<Self, string>() {}) as Self;

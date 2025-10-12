@@ -26,28 +26,6 @@ export const bind = <
     Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
     Capability
   >;
-  const eff = Effect.gen(function* () {
-    return {
-      ...(Object.fromEntries(
-        bindings?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
-          [],
-      ) as {
-        [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
-      }),
-      [svc.id]: {
-        type: "bound",
-        svc,
-        bindings:
-          bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
-        // TODO(sam): this should be passed to an Effect that interacts with the Provider
-        props,
-      } satisfies Bound<Run, Svc, Cap, Props>,
-    };
-  });
-
-  const clss: any = class {};
-  Object.assign(clss, eff);
-  clss.pipe = eff.pipe.bind(eff);
 
   type Plan = {
     [id in Svc["id"]]: Runtime.Instance<
@@ -67,7 +45,24 @@ export const bind = <
     ? Runtime.Binding<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
     : never;
 
-  return clss as Effect.Effect<
+  return Effect.gen(function* () {
+    return {
+      ...(Object.fromEntries(
+        bindings?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
+          [],
+      ) as {
+        [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
+      }),
+      [svc.id]: {
+        type: "bound",
+        svc,
+        bindings:
+          bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
+        // TODO(sam): this should be passed to an Effect that interacts with the Provider
+        props,
+      } satisfies Bound<Run, Svc, Cap, Props>,
+    };
+  }) as Effect.Effect<
     {
       [k in keyof Plan]: Plan[k];
     },
