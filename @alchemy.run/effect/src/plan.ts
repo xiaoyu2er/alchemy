@@ -1,7 +1,7 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import util from "node:util";
 import { isBound, type Bound } from "./bind.ts";
-import type { Binding } from "./binding.ts";
 import type { Capability, SerializedCapability } from "./capability.ts";
 import type { Phase } from "./phase.ts";
 import { Provider, type ProviderService } from "./provider.ts";
@@ -54,12 +54,27 @@ export type Apply<R extends Resource> =
   | Replace<R>
   | NoopUpdate<R>;
 
+const BaseNode = {
+  action: undefined! as "create" | "update" | "replace" | "noop",
+  resource: undefined! as Resource,
+  toString() {
+    return `${this.action.charAt(0).toUpperCase()}${this.action.slice(1)}(${this.resource})`;
+  },
+  [Symbol.toStringTag]() {
+    return this.toString();
+  },
+  [util.inspect.custom]() {
+    return this.toString();
+  },
+};
+
 export type Create<R extends Resource> = {
   action: "create";
   resource: R;
   news: any;
   provider: ProviderService;
   attributes: R["Attr"];
+  bindings: BindNode[];
 };
 
 export type Update<R extends Resource> = {
@@ -70,6 +85,7 @@ export type Update<R extends Resource> = {
   output: any;
   provider: ProviderService;
   attributes: R["Attr"];
+  bindings: BindNode[];
 };
 
 export type Delete<R extends Resource> = {
@@ -78,7 +94,7 @@ export type Delete<R extends Resource> = {
   olds: any;
   output: any;
   provider: ProviderService;
-  bindings: [];
+  bindings: BindNode[];
   attributes: R["Attr"];
   downstream: string[];
 };
@@ -87,6 +103,7 @@ export type NoopUpdate<R extends Resource> = {
   action: "noop";
   resource: R;
   attributes: R["Attr"];
+  bindings: BindNode[];
 };
 
 export type Replace<R extends Resource> = {
@@ -96,6 +113,7 @@ export type Replace<R extends Resource> = {
   news: any;
   output: any;
   provider: ProviderService;
+  bindings: BindNode[];
   attributes: R["Attr"];
   deleteFirst?: boolean;
 };
@@ -218,17 +236,22 @@ export const plan = <
                           const provider: ProviderService = yield* Provider(
                             resource.Parent as ResourceClass,
                           );
-                          const bindings = diffBindings(oldState, statements);
+                          const capabilities = diffCapabilities(
+                            oldState,
+                            statements,
+                          );
 
                           if (
                             oldState === undefined ||
                             oldState.status === "creating"
                           ) {
                             return {
+                              ...BaseNode,
                               action: "create",
                               news,
                               provider,
                               resource,
+                              bindings: capabilities,
                               // phantom
                               attributes: undefined!,
                             } satisfies Create<Resource>;
@@ -241,49 +264,59 @@ export const plan = <
                             });
                             if (diff.action === "noop") {
                               return {
+                                ...BaseNode,
                                 action: "noop",
                                 resource,
+                                capabilities,
                                 // phantom
                                 attributes: undefined!,
                               };
                             } else if (diff.action === "replace") {
                               return {
+                                ...BaseNode,
                                 action: "replace",
                                 olds: oldState.props,
                                 news,
                                 output: oldState.output,
                                 provider,
                                 resource,
+                                capabilities,
                                 // phantom
                                 attributes: undefined!,
                               };
                             } else {
                               return {
+                                ...BaseNode,
                                 action: "update",
                                 olds: oldState.props,
                                 news,
                                 output: oldState.output,
                                 provider,
                                 resource,
+                                capabilities,
                                 // phantom
                                 attributes: undefined!,
                               };
                             }
                           } else if (compare(oldState, resource.Props)) {
                             return {
+                              ...BaseNode,
                               action: "update",
                               olds: oldState.props,
                               news,
                               output: oldState.output,
                               provider,
                               resource,
+                              capabilities,
                               // phantom
                               attributes: undefined!,
                             };
                           } else {
                             return {
+                              ...BaseNode,
                               action: "noop",
                               resource,
+                              capabilities,
                               // phantom
                               attributes: undefined!,
                             };
@@ -380,32 +413,32 @@ const compare = <R extends Resource>(
   newState: R["Props"],
 ) => JSON.stringify(oldState?.props) === JSON.stringify(newState);
 
-const diffBindings = (
+const diffCapabilities = (
   oldState: ResourceState | undefined,
-  bindings: Binding[],
+  caps: Capability[],
 ) => {
   const actions: BindNode[] = [];
-  const oldBindings = oldState?.capabilities;
-  const oldSids = new Set(oldBindings?.map((binding) => binding.sid));
-  for (const binding of bindings) {
-    const sid = binding.Sid ?? `${binding.Action}:${binding.Resource.ID}`;
+  const oldCaps = oldState?.capabilities;
+  const oldSids = new Set(oldCaps?.map((binding) => binding.Sid));
+  for (const cap of caps) {
+    const sid = cap.Sid ?? `${cap.Action}:${cap.Resource.ID}`;
     oldSids.delete(sid);
 
-    const oldBinding = oldBindings?.find((binding) => binding.sid === sid);
+    const oldBinding = oldCaps?.find((cap) => cap.Sid === sid);
     if (!oldBinding) {
       actions.push({
         action: "attach",
-        capability: binding,
+        capability: cap,
         // phantom
-        attributes: binding.Resource.Attr,
+        attributes: cap.Resource.Attr,
       });
-    } else if (isBindingDiff(oldBinding, binding)) {
+    } else if (isCapabilityDiff(oldBinding, cap)) {
       actions.push({
         action: "attach",
-        capability: binding,
+        capability: cap,
         olds: oldBinding,
         // phantom
-        attributes: binding.Resource.Attr,
+        attributes: cap.Resource.Attr,
       });
     }
   }
@@ -418,6 +451,10 @@ const diffBindings = (
   return actions;
 };
 
-const isBindingDiff = (oldBinding: SerializedCapability, newBinding: Binding) =>
+const isCapabilityDiff = (
+  oldBinding: SerializedCapability,
+  newBinding: Capability,
+) =>
   oldBinding.Action !== newBinding.Action ||
-  oldBinding.Resource.id !== newBinding.Resource.ID;
+  // oldBinding.Resource.Type !== newBinding.Resource.Type ||
+  oldBinding.Resource.ID !== newBinding.Resource.ID;

@@ -48,6 +48,7 @@ export interface Resource<
   Attr: Attr;
   Parent: Parent;
   // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
+  Capability?: unknown;
 }
 
 export const Resource = <const Type extends string>(type: Type) => {

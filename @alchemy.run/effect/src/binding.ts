@@ -15,7 +15,7 @@ export interface Binding<
   BindingProps = any,
 > extends Context.TagClass<
     Runtime.Binding<Run, Cap>,
-    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Run["Name"]})`,
+    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Run["Type"]})`,
     BindingService<Cap["Resource"], BindingProps>
   > {
   Run: Run;

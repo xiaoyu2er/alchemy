@@ -29,7 +29,7 @@ export type LambdaFunctionProps = {
 export interface LambdaFunction<
   Svc = unknown,
   Cap = unknown,
-  Props = unknown,
+  Props extends LambdaFunctionProps = LambdaFunctionProps,
   _Attr = unknown,
 > extends Runtime<"AWS.Lambda.Function", Svc, Cap, Props> {
   readonly Binding: Lambda<this["Capability"]>;
@@ -46,9 +46,7 @@ export interface LambdaFunction<
     this["Attr"]
   >;
 }
-export const Lambda = Runtime("AWS.Lambda.Function")<
-  LambdaFunction<unknown, unknown, LambdaFunctionProps>
->();
+export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
 
 export interface Lambda<Cap extends Capability>
   extends Binding<
@@ -382,5 +380,5 @@ if (import.meta.main) {
     Effect.provide(queueProvider),
     Effect.runPromise,
   );
-  console.log(echoPlan);
+  console.log(echoPlan.EchoService.bindings);
 }

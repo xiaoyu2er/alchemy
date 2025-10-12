@@ -3,9 +3,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { Simplify } from "effect/Types";
 import { type PlanRejected, PlanReviewer } from "./approve.ts";
+import type { Capability, SerializedCapability } from "./capability.ts";
 import type { ApplyEvent, ApplyStatus } from "./event.ts";
 import type { BindNode, CRUD, Delete, Plan } from "./plan.ts";
-import type { SerializedStatement, Statement } from "./policy.ts";
 import type { Resource } from "./resource.ts";
 import { State } from "./state.ts";
 
@@ -50,7 +50,9 @@ export const apply = <const P extends Plan, Err, Req>(
         const { emit, done } = session;
 
         const apply: (
-          node: (BindNode<Statement> | SerializedStatement<Statement>)[] | CRUD,
+          node:
+            | (BindNode<Capability> | SerializedCapability<Capability>)[]
+            | CRUD,
         ) => Effect.Effect<any, never, never> = (node) =>
           Effect.gen(function* () {
             if (Array.isArray(node)) {
