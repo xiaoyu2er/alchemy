@@ -57,7 +57,7 @@ export const bind = <
     const self = {
       ...Run,
       id: Svc.id,
-      Service: Svc,
+      service: Svc,
       capability: Policy?.capabilities as any,
       parent: Run,
       props: Props,

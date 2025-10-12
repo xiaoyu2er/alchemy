@@ -11,6 +11,16 @@ import { State, type ResourceState } from "./state.ts";
 
 export type PlanError = never;
 
+export const isBindNode = (node: any): node is BindNode => {
+  return (
+    node &&
+    typeof node === "object" &&
+    (node.action === "attach" ||
+      node.action === "detach" ||
+      node.action === "noop")
+  );
+};
+
 /**
  * A node in the plan that represents a binding operation acting on a resource.
  */
@@ -233,9 +243,6 @@ export const plan = <
                       Object.entries(subgraph).map(
                         Effect.fn(function* ([id, node]) {
                           const resource = isBound(node) ? node.runtime : node;
-                          const statements = isBound(node)
-                            ? node.runtime.capability
-                            : [];
                           const news = isBound(node)
                             ? node.runtime.props
                             : resource.props;
@@ -249,7 +256,7 @@ export const plan = <
                           );
                           const capabilities = diffCapabilities(
                             oldState,
-                            statements,
+                            isBound(node) ? node.runtime.capability : [],
                           );
 
                           if (

@@ -360,7 +360,7 @@ const consumer = bind(
     handler: "index.handler",
     runtime: "nodejs20x",
     architecture: "arm64",
-    url: true,
+    url: false,
   },
 );
 
@@ -369,7 +369,7 @@ const consumer = bind(
 if (import.meta.main) {
   const echoPlan = await plan({
     phase: "update",
-    resources: [echo],
+    resources: [echo, consumer],
   }).pipe(
     Effect.provide(dotAlchemy),
     Effect.provide(State.localFs),
@@ -380,5 +380,5 @@ if (import.meta.main) {
     Effect.provide(queueProvider),
     Effect.runPromise,
   );
-  console.log(echoPlan.EchoService.bindings);
+  console.log(echoPlan);
 }

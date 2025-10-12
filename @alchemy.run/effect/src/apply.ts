@@ -6,7 +6,7 @@ import { PlanReviewer, type PlanRejected } from "./approve.ts";
 import type { Capability, SerializedCapability } from "./capability.ts";
 import type { ApplyEvent, ApplyStatus } from "./event.ts";
 import {
-  isCRUD,
+  isBindNode,
   type BindNode,
   type CRUD,
   type Delete,
@@ -64,12 +64,9 @@ export const apply = <const P extends Plan, Err, Req>(
             if (Array.isArray(node)) {
               return yield* Effect.all(
                 node.map((binding) => {
-                  const resourceId = isCRUD(binding)
-                    ? binding.resource.id
-                    : (binding as SerializedCapability<Capability>).Resource.ID;
-                  // "stmt" in binding
-                  //   ? binding.stmt.resource.ID
-                  //   : binding.resource.id;
+                  const resourceId = isBindNode(binding)
+                    ? binding.capability.resource.id
+                    : binding.resource.id;
                   const resource = plan[resourceId];
                   return !resource
                     ? Effect.dieMessage(`Resource ${resourceId} not found`)
@@ -93,8 +90,8 @@ export const apply = <const P extends Plan, Err, Req>(
                       bindings: node.bindings.map((binding) => ({
                         ...binding,
                         resource: {
-                          type: binding.Resource.Class,
-                          id: binding.Resource.ID,
+                          type: binding.capability.resource.type,
+                          id: binding.capability.resource.id,
                         },
                       })),
                     })

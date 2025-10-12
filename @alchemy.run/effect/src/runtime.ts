@@ -3,7 +3,6 @@ import util from "node:util";
 import type { Types } from "effect";
 import * as Context from "effect/Context";
 import type { Capability } from "./capability.ts";
-import { inspect } from "./inspect.ts";
 import type { Resource } from "./resource.ts";
 import type { Service } from "./service.ts";
 
@@ -54,7 +53,7 @@ export const Runtime =
   <Self>() =>
     Object.assign(
       (cap: Capability) => {
-        const tag = `${Type}(${inspect(cap)})` as const;
+        const tag = `${Type}(${cap})` as const;
         return class extends Context.Tag(tag)<Self, string>() {
           Capability = cap;
           static toString() {
@@ -71,10 +70,10 @@ export const Runtime =
       {
         Type: Type,
         Kind: "Runtime",
-        Service: undefined! as Service,
-        Capability: undefined! as Capability[],
+        service: undefined! as Service,
+        capability: undefined! as Capability[],
         toString() {
-          return `${this.Type}(${this.Service?.id}${this.Capability?.length ? `, ${this.Capability.map((c) => `${c}`).join(", ")}` : ""})`;
+          return `${this.Type}(${this.service?.id}${this.capability?.length ? `, ${this.capability.map((c) => `${c}`).join(", ")}` : ""})`;
         },
         [Symbol.toStringTag]() {
           return this.toString();
