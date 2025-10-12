@@ -1,3 +1,6 @@
+import util from "node:util";
+import { inspect } from "./inspect.ts";
+
 export type ResourceType = string;
 export type ResourceID = string;
 export type ResourceProps = Record<string, any>;
@@ -125,6 +128,23 @@ const createClass = <
     readonly Props = props;
     readonly Attr = {} as any;
     readonly Parent = this as any;
+
+    static toString() {
+      return `${type}(${id}${
+        props && typeof props === "object" && Object.keys(props).length > 0
+          ? `, ${Object.entries(props as any)
+              .map(([key, value]) => `${key}: ${inspect(value)}`)
+              .join(", ")}`
+          : ""
+      })`;
+    }
+    static [util.inspect.custom]() {
+      return this.toString();
+    }
+    static [Symbol.toStringTag]() {
+      return this.toString();
+    }
   }
+
   return cls;
 };

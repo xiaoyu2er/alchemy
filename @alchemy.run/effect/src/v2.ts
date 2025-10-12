@@ -9,7 +9,6 @@ import { Service } from "./service.ts";
 import type * as lambda from "aws-lambda";
 import { bind } from "./bind.ts";
 import { Binding, Bindings } from "./binding.ts";
-import { plan } from "./plan.ts";
 import { Resource } from "./resource.ts";
 import { Runtime } from "./runtime.ts";
 
@@ -308,13 +307,28 @@ export const serve = <const ID extends string, Req>(
 
 // example resource
 
+// Resource
+class Message extends S.Struct({
+  id: S.Int,
+  value: S.String,
+}) {}
+
 class Messages extends Queue.create("messages", {
   fifo: true,
-  schema: S.Struct({
-    id: S.Int,
-    value: S.String,
-  }),
+  schema: Message,
 }) {}
+
+// Service
+class EchoService extends serve(
+  "echo-service",
+  Effect.fn(function* (req) {
+    yield* sendMessage(Messages, {
+      id: 1,
+      value: "test",
+    });
+    return new Response(req.body, req);
+  }),
+) {}
 
 class MessageConsumer extends consume(
   Messages,
@@ -330,30 +344,9 @@ class MessageConsumer extends consume(
   }),
 ) {}
 
-class EchoService extends serve(
-  "echo-service",
-  Effect.fn(function* (req) {
-    yield* sendMessage(Messages, {
-      id: 1,
-      value: "test",
-    });
-    return new Response(req.body, req);
-  }),
-) {}
+console.log(Bindings(SendMessage(Messages)));
 
-const consumer = bind(
-  Worker,
-  MessageConsumer,
-  Bindings(SendMessage(Messages), Consume(Messages)),
-  {
-    main: "./src/index.ts",
-    handler: "index.handler",
-    runtime: "nodejs20x",
-    architecture: "arm64",
-    url: true,
-  },
-);
-
+// Materialize Infrastructure
 const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   main: "./src/index.ts",
   handler: "index.handler",
@@ -362,12 +355,27 @@ const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   url: true,
 });
 
+// const consumer = bind(
+//   Worker,
+//   MessageConsumer,
+//   // sqs:SendMessage and sqs:Consume (IAM Policies)
+//   Bindings(SendMessage(Messages), Consume(Messages)),
+//   {
+//     main: "./src/index.ts",
+//     handler: "index.handler",
+//     runtime: "nodejs20x",
+//     architecture: "arm64",
+//     url: true,
+//   },
+// );
+
 const e = await echo.pipe(
   Effect.provide(lambdaSendSQSMessage),
   Effect.runPromise,
 );
 
-const echoPlan = plan({
-  phase: "update",
-  resources: [echo],
-});
+console.log(e);
+// const echoPlan = plan({
+//   phase: "update",
+//   resources: [echo],
+// });

@@ -27,9 +27,15 @@ export const Service = <
   impl: Handler,
   capability?: Cap,
 ): Service<ID, Handler, Cap> =>
-  ({
-    kind: "Service",
-    id,
-    impl,
-    capability: capability!,
-  }) as Service<ID, Handler, Cap>;
+  class {
+    static readonly kind = "Service";
+    static readonly id = id;
+    static readonly impl = impl;
+    static readonly capability = capability;
+
+    readonly kind = "Service";
+    readonly id = id;
+    readonly impl = impl;
+    readonly capability = capability;
+    constructor(_: never) {}
+  } as Service<ID, Handler, Cap>;

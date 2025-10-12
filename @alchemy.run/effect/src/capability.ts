@@ -1,4 +1,5 @@
 import type * as HKT from "effect/HKT";
+import util from "node:util";
 import type { Resource, ResourceClass, ResourceProps } from "./resource.ts";
 
 export interface CapabilityType<Action extends string = string, Resource = any>
@@ -36,9 +37,24 @@ export const Capability =
         ? `${Action}(${res.Type})`
         : `${Action}(${res.ID})`;
     return Object.assign(
-      (resource: Resource | ResourceClass, props?: ResourceProps) => ({
-        resource,
-        props,
+      (Resource: Resource | ResourceClass, Props?: ResourceProps) => ({
+        Resource,
+        Props,
+        toString() {
+          return `${Action}(${Resource}${
+            Props
+              ? `, ${Object.entries(Props as any)
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join(", ")}`
+              : ""
+          })`;
+        },
+        [util.inspect.custom]() {
+          return this.toString();
+        },
+        [Symbol.toStringTag]() {
+          return this.toString();
+        },
       }),
       {
         Kind: "Capability",
