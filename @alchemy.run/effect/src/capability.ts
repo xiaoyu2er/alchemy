@@ -2,6 +2,16 @@ import type * as HKT from "effect/HKT";
 import util from "node:util";
 import type { Resource, ResourceClass, ResourceProps } from "./resource.ts";
 
+export type SerializedCapability<B extends Capability = Capability> = Omit<
+  B,
+  "resource"
+> & {
+  resource: {
+    type: string;
+    id: string;
+  };
+};
+
 export interface CapabilityType<Action extends string = string, Resource = any>
   extends HKT.TypeLambda {
   Action: Action;
@@ -20,12 +30,12 @@ export type Capability<
    *
    * @default ${action}:${resource.id}
    */
-  Sid?: string;
-  Label: string;
-  Kind: "Capability";
-  Action: Action;
-  Resource: Res; //Extract<Res, Resource | ResourceClass>;
-  Class: Class;
+  class: Class;
+  kind: "Capability";
+  sid?: string;
+  label: string;
+  action: Action;
+  resource: Res; //Extract<Res, Resource | ResourceClass>;
 };
 
 export const Capability =
@@ -33,17 +43,17 @@ export const Capability =
   <Self extends CapabilityType<Action, any>>() => {
     const res = Res as Resource | ResourceClass;
     const label =
-      res.Kind === "ResourceClass"
-        ? `${Action}(${res.Type})`
-        : `${Action}(${res.ID})`;
+      res.kind === "ResourceClass"
+        ? `${Action}(${res.type})`
+        : `${Action}(${res.id})`;
     return Object.assign(
-      (Resource: Resource | ResourceClass, Props?: ResourceProps) => ({
-        Resource,
-        Props,
+      (resource: Resource | ResourceClass, props?: ResourceProps) => ({
+        resource,
+        props,
         toString() {
-          return `${Action}(${"ID" in Resource ? Resource.ID : Resource.Type}${
-            Props
-              ? `, ${Object.entries(Props as any)
+          return `${Action}(${"id" in resource ? resource.id : resource.type}${
+            props
+              ? `, ${Object.entries(props as any)
                   .map(([key, value]) => `${key}: ${value}`)
                   .join(", ")}`
               : ""
@@ -58,21 +68,10 @@ export const Capability =
       }),
       {
         Kind: "Capability",
-        Action: Action,
-        Resource: Res,
-        Ctor: undefined!,
-        Label: label,
-        Sid: label, // TODO(sam): should this be different
+        action: Action,
+        resource: Res,
+        label: label,
+        sid: label, // TODO(sam): should this be different
       } as const,
     ) as any as Self;
   };
-
-export type SerializedCapability<B extends Capability = Capability> = Omit<
-  B,
-  "Resource"
-> & {
-  Resource: {
-    Type: string;
-    ID: string;
-  };
-};

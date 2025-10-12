@@ -18,7 +18,7 @@ export type Bound<Run extends Runtime = Runtime<string, any, any>> = {
 export const bind = <
   Run extends Runtime,
   Svc extends Service,
-  const Props extends Run["Props"],
+  const Props extends Run["props"],
 >(
   Run: Run,
   Svc: Svc,
@@ -40,35 +40,34 @@ export const bind = <
   type Plan = {
     [id in Svc["id"]]: Bound<
       // @ts-expect-error
-      (Run & { Svc: Service; Cap: Cap; Props: Props })["Instance"]
+      (Run & { svc: Service; cap: Cap; props: Props })["Instance"]
     >;
   } & {
-    [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
-      Cap["Resource"],
-      { ID: id }
+    [id in Exclude<Cap["resource"]["id"], Svc["id"]>]: Extract<
+      Cap["resource"],
+      { id: id }
     >;
   };
 
   type Providers<Cap extends Capability> = Cap extends any
-    ? Runtime.Binding<Run, Kind<Cap["Class"], Cap["Resource"]["Class"]>>
+    ? Runtime.Binding<Run, Kind<Cap["class"], Cap["resource"]["class"]>>
     : never;
 
   return Effect.gen(function* () {
     const self = {
       ...Run,
-      ID: Svc.id,
+      id: Svc.id,
       Service: Svc,
-      Capability: Policy?.capabilities as any,
-      Parent: Run,
-      Props: Props,
-      Attr: undefined!,
+      capability: Policy?.capabilities as any,
+      parent: Run,
+      props: Props,
     };
     return {
       ...(Object.fromEntries(
-        Policy?.capabilities.map((cap) => [cap.Resource.ID, cap.Resource]) ??
+        Policy?.capabilities.map((cap) => [cap.resource.id, cap.resource]) ??
           [],
       ) as {
-        [id in Cap["Resource"]["ID"]]: Extract<Cap["Resource"], { ID: id }>;
+        [id in Cap["resource"]["id"]]: Extract<Cap["resource"], { id: id }>;
       }),
       [Svc.id]: {
         runtime: self,

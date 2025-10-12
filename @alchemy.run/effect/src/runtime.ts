@@ -8,19 +8,19 @@ import type { Resource } from "./resource.ts";
 import type { Service } from "./service.ts";
 
 export interface RuntimeType<
-  Type extends string = string,
-  Svc = unknown,
-  Cap = unknown,
-  Props = unknown,
-> extends Resource<Type, string, Props> {
+  type extends string = string,
+  svc = unknown,
+  cap = unknown,
+  props = unknown,
+> extends Resource<type, string, props> {
   new (...args: any[]): {};
-  Type: Type;
+  type: type;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
-  Svc: Svc;
-  Service: Extract<this["Svc"], Service>;
+  svc: svc;
+  service: Extract<this["svc"], Service>;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
-  Cap: Cap;
-  Capability: Extract<this["Cap"], Capability>;
+  cap: cap;
+  capability: Extract<this["cap"], Capability>;
 }
 export declare namespace Runtime {
   export type Binding<
@@ -41,11 +41,11 @@ export declare namespace Runtime {
 export type AnyRuntime = RuntimeType<string, any, any, any>;
 
 export interface Runtime<
-  Type extends string = string,
-  Svc = unknown,
-  Cap = unknown,
-  Props = unknown,
-> extends RuntimeType<Type, Svc, Cap, Props> {
+  type extends string = string,
+  svc = unknown,
+  cap = unknown,
+  props = unknown,
+> extends RuntimeType<type, svc, cap, props> {
   <T>(T: T): Runtime.Binding<this, T>;
 }
 

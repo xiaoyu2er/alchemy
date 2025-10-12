@@ -7,13 +7,13 @@ export type ResourceProps = Record<string, any>;
 export type ResourceAttr = Record<string, any>;
 
 export interface ResourceClass<
-  Type extends string = string,
-  Self extends Resource<Type> = any,
+  type extends string = string,
+  Self extends Resource<type> = any,
 > {
-  Kind: "ResourceClass";
-  Type: Type;
-  Props: unknown;
-  Attr: unknown;
+  kind: "ResourceClass";
+  type: type;
+  props: unknown;
+  attr: unknown;
   new (id: string, props: any): Self;
 }
 
@@ -34,21 +34,21 @@ export declare namespace Resource {
 export type AnyResource = Resource<any, any, any, any, any>;
 
 export interface Resource<
-  Type extends ResourceType = ResourceType,
-  ID extends ResourceID = ResourceID,
-  Props = unknown,
-  Attr = unknown,
-  Parent = unknown,
+  type extends ResourceType = ResourceType,
+  id extends ResourceID = ResourceID,
+  props = unknown,
+  attr = unknown,
+  parent = unknown,
 > {
-  Kind: "Resource";
-  Type: Type;
-  ID: ID;
-  Props: Props;
+  kind: "Resource";
+  type: type;
+  id: id;
+  props: props;
   /** @internal phantom type */
-  Attr: Attr;
-  Parent: Parent;
+  attr: attr;
+  parent: parent;
   // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
-  Capability?: unknown;
+  capability?: unknown;
 }
 
 export const Resource = <const Type extends string>(type: Type) => {
@@ -56,24 +56,24 @@ export const Resource = <const Type extends string>(type: Type) => {
     new (...args: any[]): unknown;
   }
   abstract class R {
-    static readonly Type = type;
-    static readonly Kind = "ResourceClass";
-    static readonly Props = {} as unknown;
-    static readonly Attr = {} as unknown;
+    static readonly kind = "ResourceClass";
+    static readonly type = type;
+    static readonly props = {} as unknown;
+    static readonly attr = {} as unknown;
 
-    readonly Kind = "Resource";
-    readonly Type = type;
-    abstract readonly Attr: {
+    readonly kind = "Resource";
+    readonly type = type;
+    abstract readonly attr: {
       [key: string]: any;
     };
-    readonly Class: typeof R = R;
-    static get Parent() {
+    readonly class: typeof R = R;
+    static get parent() {
       return this;
     }
 
     constructor(
-      readonly ID: string,
-      readonly Props: any,
+      readonly id: string,
+      readonly props: any,
     ) {
       return class extends (this as any) {} as any;
     }
@@ -89,23 +89,23 @@ export const Resource = <const Type extends string>(type: Type) => {
       id: ID,
       props: Props,
     ): {
-      readonly Kind: "Resource";
-      readonly Type: Type;
-      readonly ID: ID;
-      readonly Props: Props;
-      readonly Attr: any;
-      readonly Class: Self;
+      readonly class: Self;
+      readonly kind: "Resource";
+      readonly type: Type;
+      readonly id: ID;
+      readonly props: Props;
+      readonly attr: any;
 
       new (
         ...args: any[]
       ): {
-        readonly Kind: "Resource";
-        readonly Type: Type;
-        readonly ID: ID;
-        readonly Props: Props;
-        readonly Attr: any;
-        readonly Parent: InstanceType<Self>;
-        Class: Self;
+        readonly kind: "Resource";
+        readonly type: Type;
+        readonly id: ID;
+        readonly props: Props;
+        readonly attr: any;
+        readonly parent: InstanceType<Self>;
+        class: Self;
       };
     } {
       return createClass(type, id, props, R);
@@ -128,17 +128,17 @@ const createClass = <
   Base: Base,
 ): any => {
   abstract class cls extends Base {
-    static readonly Kind = "Resource";
+    static readonly kind = "Resource";
     static readonly Type = type;
-    static readonly ID = id;
-    static readonly Props = props;
+    static readonly id = id;
+    static readonly props = props;
     static readonly Attr = {} as any;
 
-    readonly Kind = "Resource";
+    readonly kind = "Resource";
     readonly Type = type;
-    readonly ID = id;
-    readonly Props = props;
-    readonly Attr = {} as any;
+    readonly id = id;
+    readonly props = props;
+    readonly attr = {} as any;
     readonly Parent = this as any;
 
     static toString() {

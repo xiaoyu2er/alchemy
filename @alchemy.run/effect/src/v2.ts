@@ -27,23 +27,23 @@ export type LambdaFunctionProps = {
 };
 
 export interface LambdaFunction<
-  Svc = unknown,
-  Cap = unknown,
-  Props extends LambdaFunctionProps = LambdaFunctionProps,
+  svc = unknown,
+  cap = unknown,
+  props extends LambdaFunctionProps = LambdaFunctionProps,
   _Attr = unknown,
-> extends Runtime<"AWS.Lambda.Function", Svc, Cap, Props> {
-  readonly Binding: Lambda<this["Capability"]>;
-  readonly Attr: this["Props"] extends { url?: infer url }
+> extends Runtime<"AWS.Lambda.Function", svc, cap, props> {
+  readonly Binding: Lambda<this["capability"]>;
+  readonly attr: this["props"] extends { url?: infer url }
     ? {
         readonly functionName: string;
         readonly functionUrl: url extends true ? string : undefined;
       }
     : never;
   readonly Instance: LambdaFunction<
-    this["Service"],
-    this["Capability"],
-    this["Props"],
-    this["Attr"]
+    this["service"],
+    this["capability"],
+    this["props"],
+    this["attr"]
   >;
 }
 export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
@@ -90,11 +90,11 @@ export type WorkerAttr<Props> = {
   readonly url: Props extends { url: false } ? undefined : string;
 };
 
-export interface WorkerScript<Svc = unknown, Cap = Capability>
-  extends Runtime<"Cloudflare.Worker", Svc, Cap> {
-  readonly Binding: Worker<this["Capability"]>;
-  readonly Attr: WorkerAttr<this["Props"]>;
-  readonly Instance: WorkerScript<this["Service"], this["Capability"]>;
+export interface WorkerScript<svc = unknown, cap = Capability>
+  extends Runtime<"Cloudflare.Worker", svc, cap> {
+  readonly Binding: Worker<this["capability"]>;
+  readonly attr: WorkerAttr<this["props"]>;
+  readonly Instance: WorkerScript<this["service"], this["capability"]>;
 }
 
 export const Worker = Runtime("Cloudflare.Worker")<WorkerScript>();
@@ -120,14 +120,14 @@ export class Queue<
   ID extends string = string,
   Props extends QueueProps = QueueProps,
 > extends Resource("AWS.SQS.Queue") {
-  declare Attr: {
+  declare attr: {
     queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
   };
   constructor(
-    readonly ID: ID,
-    readonly Props: Props,
+    readonly id: ID,
+    readonly props: Props,
   ) {
-    super(ID, Props);
+    super(id, props);
   }
 }
 export const queueProvider = Layer.succeed(
@@ -162,11 +162,11 @@ export function consume<Q extends Queue, ID extends string, Req>(
   queue: Q,
   id: ID,
   handler: (
-    event: SQSEvent<Q["Props"]["schema"]["Type"]>,
+    event: SQSEvent<Q["props"]["schema"]["Type"]>,
     context: lambda.Context,
   ) => Effect.Effect<lambda.SQSBatchResponse | void, never, Req>,
 ) {
-  const schema = queue.Props.schema;
+  const schema = queue.props.schema;
   return Service(
     id,
     Effect.fn(function* (event: lambda.SQSEvent, context: lambda.Context) {
@@ -225,7 +225,7 @@ export interface SendMessage<Q>
 
 export declare const sendMessage: <Q extends Queue>(
   queue: Q,
-  message: Q["Props"]["schema"]["Type"],
+  message: Q["props"]["schema"]["Type"],
 ) => Effect.Effect<void, never, SendMessage<Resource.Instance<Q>>>;
 
 // bind a Queue to an AWS Lambda function

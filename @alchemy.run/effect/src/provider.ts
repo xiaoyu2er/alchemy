@@ -5,11 +5,14 @@ import type { AnyRuntime } from "./runtime.ts";
 
 export type Provider<R extends Resource> = Context.TagClass<
   Provider<R>,
-  R["Type"],
+  R["type"],
   ProviderService<R>
 >;
 export const Provider = <R extends ResourceClass | AnyRuntime>(R: R) => {
-  return Context.Tag(R.Type)() as Provider<
+  if (R === undefined) {
+    console.log(new Error().stack);
+  }
+  return Context.Tag(R.type)() as Provider<
     R extends ResourceClass ? InstanceType<R> : R
   >;
 };
@@ -30,33 +33,33 @@ export interface ProviderService<Res extends Resource = Resource> {
   // replace(): Effect.Effect<void, never, never>;
   read?(input: {
     id: string;
-    olds: Res["Props"] | undefined;
+    olds: Res["props"] | undefined;
     // what is the ARN?
-    output: Res["Attr"] | undefined; // current state -> synced state
-  }): Effect.Effect<Res["Attr"] | undefined, any, never>;
+    output: Res["attr"] | undefined; // current state -> synced state
+  }): Effect.Effect<Res["attr"] | undefined, any, never>;
   diff?(input: {
     id: string;
-    olds: Res["Props"];
-    news: Res["Props"];
-    output: Res["Attr"];
+    olds: Res["props"];
+    news: Res["props"];
+    output: Res["attr"];
   }): Effect.Effect<Diff, never, never>;
   stub?(input: {
     id: string;
-    news: Res["Props"];
-  }): Effect.Effect<Res["Attr"], any, never>;
+    news: Res["props"];
+  }): Effect.Effect<Res["attr"], any, never>;
   create(input: {
     id: string;
-    news: Res["Props"];
-  }): Effect.Effect<Res["Attr"], any, never>;
+    news: Res["props"];
+  }): Effect.Effect<Res["attr"], any, never>;
   update(input: {
     id: string;
-    news: Res["Props"];
-    olds: Res["Props"];
-    output: Res["Attr"];
-  }): Effect.Effect<Res["Attr"], any, never>;
+    news: Res["props"];
+    olds: Res["props"];
+    output: Res["attr"];
+  }): Effect.Effect<Res["attr"], any, never>;
   delete(input: {
     id: string;
-    olds: Res["Props"];
-    output: Res["Attr"];
+    olds: Res["props"];
+    output: Res["attr"];
   }): Effect.Effect<void, any, never>;
 }

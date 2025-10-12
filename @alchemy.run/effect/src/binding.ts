@@ -15,8 +15,8 @@ export interface Binding<
   BindingProps = any,
 > extends Context.TagClass<
     Runtime.Binding<Run, Cap>,
-    `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Run["Type"]})`,
-    BindingService<Cap["Resource"], BindingProps>
+    `${Cap["action"]}(${Cap["resource"]["type"]["Name"]}, ${Run["type"]})`,
+    BindingService<Cap["resource"], BindingProps>
   > {
   Run: Run;
   BindingProps: BindingProps;
@@ -35,8 +35,8 @@ export const Binding =
   <Self>(): Self =>
     Object.assign(
       Context.Tag(
-        `${Cap.Action}(${Cap.Resource.Type.Name}, ${Runtime})` as `${Cap["Action"]}(${Cap["Resource"]["Type"]["Name"]}, ${Runtime})`,
-      )<Self, BindingService<Cap["Resource"]["Type"], Props>>(),
+        `${Cap.action}(${Cap.resource.Type.Name}, ${Runtime})` as `${Cap["action"]}(${Cap["resource"]["Type"]["Name"]}, ${Runtime})`,
+      )<Self, BindingService<Cap["resource"]["Type"], Props>>(),
       {
         Kind: "Binding",
         Capability: Cap,
@@ -50,11 +50,11 @@ export type BindingService<
   DetachReq = any,
 > = {
   attach: (
-    resource: R["Attr"],
+    resource: R["attr"],
     to: Props,
   ) => Effect.Effect<Partial<Props> | void, never, AttachReq>;
   detach?: (
-    resource: R["Attr"],
+    resource: R["attr"],
     from: Props,
   ) => Effect.Effect<void, never, DetachReq>;
 };

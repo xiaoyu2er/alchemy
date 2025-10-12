@@ -23,19 +23,30 @@ export type Attach<Cap extends Capability = Capability> = {
   action: "attach";
   capability: Cap;
   olds?: SerializedCapability<Cap>;
-  attributes: Cap["Resource"]["Attr"];
+  attributes: Cap["resource"]["attr"];
 };
 
 export type Detach<Cap extends Capability = Capability> = {
   action: "detach";
   capability: Cap;
-  attributes: Cap["Resource"]["Attr"];
+  attributes: Cap["resource"]["attr"];
 };
 
 export type NoopBind<Cap extends Capability = Capability> = {
   action: "noop";
   capability: Cap;
-  attributes: Cap["Resource"]["Attr"];
+  attributes: Cap["resource"]["attr"];
+};
+
+export const isCRUD = (node: any): node is CRUD => {
+  return (
+    node &&
+    typeof node === "object" &&
+    (node.action === "create" ||
+      node.action === "update" ||
+      node.action === "replace" ||
+      node.action === "noop")
+  );
 };
 
 /**
@@ -73,7 +84,7 @@ export type Create<R extends Resource> = {
   resource: R;
   news: any;
   provider: ProviderService;
-  attributes: R["Attr"];
+  attributes: R["attr"];
   bindings: BindNode[];
 };
 
@@ -84,7 +95,7 @@ export type Update<R extends Resource> = {
   news: any;
   output: any;
   provider: ProviderService;
-  attributes: R["Attr"];
+  attributes: R["attr"];
   bindings: BindNode[];
 };
 
@@ -95,14 +106,14 @@ export type Delete<R extends Resource> = {
   output: any;
   provider: ProviderService;
   bindings: BindNode[];
-  attributes: R["Attr"];
+  attributes: R["attr"];
   downstream: string[];
 };
 
 export type NoopUpdate<R extends Resource> = {
   action: "noop";
   resource: R;
-  attributes: R["Attr"];
+  attributes: R["attr"];
   bindings: BindNode[];
 };
 
@@ -114,7 +125,7 @@ export type Replace<R extends Resource> = {
   output: any;
   provider: ProviderService;
   bindings: BindNode[];
-  attributes: R["Attr"];
+  attributes: R["attr"];
   deleteFirst?: boolean;
 };
 
@@ -198,7 +209,7 @@ export const plan = <
         } => !!resource?.capabilities,
       )
       .flatMap((resource) =>
-        resource.capabilities.map((cap) => [cap.Resource.ID, resource.id]),
+        resource.capabilities.map((cap) => [cap.resource.id, resource.id]),
       )
       .reduce(
         (acc, [id, resourceId]) => ({
@@ -223,18 +234,18 @@ export const plan = <
                         Effect.fn(function* ([id, node]) {
                           const resource = isBound(node) ? node.runtime : node;
                           const statements = isBound(node)
-                            ? node.runtime.Capability
+                            ? node.runtime.capability
                             : [];
                           const news = isBound(node)
-                            ? node.runtime.Props
-                            : resource.Props;
+                            ? node.runtime.props
+                            : resource.props;
 
                           const oldState = yield* state.get(id);
-                          if (!resource.Parent) {
+                          if (!resource.parent) {
                             console.log({ resource: resource });
                           }
                           const provider: ProviderService = yield* Provider(
-                            resource.Parent as ResourceClass,
+                            resource.parent as ResourceClass,
                           );
                           const capabilities = diffCapabilities(
                             oldState,
@@ -298,7 +309,7 @@ export const plan = <
                                 attributes: undefined!,
                               };
                             }
-                          } else if (compare(oldState, resource.Props)) {
+                          } else if (compare(oldState, resource.props)) {
                             return {
                               ...BaseNode,
                               action: "update",
@@ -323,7 +334,7 @@ export const plan = <
                           }
                         }),
                       ),
-                    )).map((update) => [update.resource.ID, update]),
+                    )).map((update) => [update.resource.id, update]),
                   ) as Plan;
                 }),
               ),
@@ -359,13 +370,12 @@ export const plan = <
                   // TODO(sam): Support Detach Bindings
                   bindings: [],
                   resource: {
-                    Kind: "Resource",
-                    ID: id,
-                    Parent: undefined,
-                    Type: oldState.type,
-                    // Class: oldState.type,
-                    Attr: oldState.output,
-                    Props: oldState.props,
+                    kind: "Resource",
+                    id: id,
+                    parent: undefined,
+                    type: oldState.type,
+                    attr: oldState.output,
+                    props: oldState.props,
                   },
                   downstream: downstream[id] ?? [],
                 } satisfies Delete<Resource>,
@@ -410,7 +420,7 @@ class DeleteResourceHasDownstreamDependencies extends Data.TaggedError(
 
 const compare = <R extends Resource>(
   oldState: ResourceState | undefined,
-  newState: R["Props"],
+  newState: R["props"],
 ) => JSON.stringify(oldState?.props) === JSON.stringify(newState);
 
 const diffCapabilities = (
@@ -419,18 +429,18 @@ const diffCapabilities = (
 ) => {
   const actions: BindNode[] = [];
   const oldCaps = oldState?.capabilities;
-  const oldSids = new Set(oldCaps?.map((binding) => binding.Sid));
+  const oldSids = new Set(oldCaps?.map((binding) => binding.sid));
   for (const cap of caps) {
-    const sid = cap.Sid ?? `${cap.Action}:${cap.Resource.ID}`;
+    const sid = cap.sid ?? `${cap.action}:${cap.resource.ID}`;
     oldSids.delete(sid);
 
-    const oldBinding = oldCaps?.find((cap) => cap.Sid === sid);
+    const oldBinding = oldCaps?.find((cap) => cap.sid === sid);
     if (!oldBinding) {
       actions.push({
         action: "attach",
         capability: cap,
         // phantom
-        attributes: cap.Resource.Attr,
+        attributes: cap.resource.Attr,
       });
     } else if (isCapabilityDiff(oldBinding, cap)) {
       actions.push({
@@ -438,7 +448,7 @@ const diffCapabilities = (
         capability: cap,
         olds: oldBinding,
         // phantom
-        attributes: cap.Resource.Attr,
+        attributes: cap.resource.Attr,
       });
     }
   }
@@ -455,6 +465,6 @@ const isCapabilityDiff = (
   oldBinding: SerializedCapability,
   newBinding: Capability,
 ) =>
-  oldBinding.Action !== newBinding.Action ||
+  oldBinding.action !== newBinding.action ||
   // oldBinding.Resource.Type !== newBinding.Resource.Type ||
-  oldBinding.Resource.ID !== newBinding.Resource.ID;
+  oldBinding.resource.id !== newBinding.resource.id;

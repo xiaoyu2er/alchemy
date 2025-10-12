@@ -2,11 +2,17 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { Simplify } from "effect/Types";
-import { type PlanRejected, PlanReviewer } from "./approve.ts";
+import { PlanReviewer, type PlanRejected } from "./approve.ts";
 import type { Capability, SerializedCapability } from "./capability.ts";
 import type { ApplyEvent, ApplyStatus } from "./event.ts";
-import type { BindNode, CRUD, Delete, Plan } from "./plan.ts";
-import type { Resource } from "./resource.ts";
+import {
+  isCRUD,
+  type BindNode,
+  type CRUD,
+  type Delete,
+  type Plan,
+} from "./plan.ts";
+import type { AnyResource } from "./resource.ts";
 import { State } from "./state.ts";
 
 export interface PlanStatusSession {
@@ -58,10 +64,12 @@ export const apply = <const P extends Plan, Err, Req>(
             if (Array.isArray(node)) {
               return yield* Effect.all(
                 node.map((binding) => {
-                  const resourceId =
-                    "stmt" in binding
-                      ? binding.stmt.resource.ID
-                      : binding.resource.id;
+                  const resourceId = isCRUD(binding)
+                    ? binding.resource.id
+                    : (binding as SerializedCapability<Capability>).Resource.ID;
+                  // "stmt" in binding
+                  //   ? binding.stmt.resource.ID
+                  //   : binding.resource.id;
                   const resource = plan[resourceId];
                   return !resource
                     ? Effect.dieMessage(`Resource ${resourceId} not found`)
@@ -76,17 +84,17 @@ export const apply = <const P extends Plan, Err, Req>(
               effect.pipe(
                 Effect.flatMap((output) =>
                   state
-                    .set(node.resource.ID, {
-                      id: node.resource.ID,
+                    .set(node.resource.id, {
+                      id: node.resource.id,
                       type: node.resource.type,
                       status: node.action === "create" ? "created" : "updated",
                       props: node.resource.props,
                       output,
                       bindings: node.bindings.map((binding) => ({
-                        ...binding.stmt,
+                        ...binding,
                         resource: {
-                          type: binding.stmt.resource.Class,
-                          id: binding.stmt.resource.ID,
+                          type: binding.Resource.Class,
+                          id: binding.Resource.ID,
                         },
                       })),
                     })
@@ -94,9 +102,7 @@ export const apply = <const P extends Plan, Err, Req>(
                 ),
               );
 
-            const hydrate = <A extends BindNode<Statement>>(
-              bindings: Statement[],
-            ) =>
+            const hydrate = <A extends BindNode>(bindings: Capability[]) =>
               node.bindings.map(
                 (binding, i) =>
                   Object.assign(binding, {
@@ -106,7 +112,7 @@ export const apply = <const P extends Plan, Err, Req>(
                   },
               );
 
-            const id = node.resource.ID;
+            const id = node.resource.id;
 
             const scopedSession = {
               ...session,
@@ -240,10 +246,7 @@ export const apply = <const P extends Plan, Err, Req>(
     ),
   ) as Effect.Effect<
     {
-      [id in keyof P]: P[id] extends
-        | Delete<Resource, Statement>
-        | undefined
-        | never
+      [id in keyof P]: P[id] extends Delete<AnyResource> | undefined | never
         ? never
         : Simplify<P[id]["resource"]["attributes"]>;
     } extends infer O

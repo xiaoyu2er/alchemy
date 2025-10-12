@@ -10,7 +10,7 @@ import { FunctionClient } from "../lambda/function.client.ts";
 import type { Queue } from "./queue.ts";
 
 export type SQSRecord<Q extends Queue> = Omit<lambda.SQSRecord, "body"> & {
-  body: Q["Props"]["message"]["Type"];
+  body: Q["props"]["message"]["Type"];
   messageAttributes: lambda.SQSMessageAttributes;
 };
 
@@ -28,7 +28,7 @@ export class Consume<Q extends Queue> extends Alchemy.Service(
 >() {
   constructor(queue: Q) {
     super({
-      label: `AWS.SQS.Consume(${queue.ID})`,
+      label: `AWS.SQS.Consume(${queue.id})`,
       effect: "Allow",
       action: "sqs:Consume",
       resource: queue,
@@ -54,12 +54,12 @@ export const consume = <const ID extends string, Q extends Queue, Err, Req>(
           Records: yield* Effect.all(
             input.Records.map(
               Effect.fn(function* (record) {
-                const body = yield* S.validate(queue.Props.message)(
+                const body = yield* S.validate(queue.props.message)(
                   record.body,
                 );
                 return {
                   ...record,
-                  body: body as Q["Props"]["message"]["Type"],
+                  body: body as Q["props"]["message"]["Type"],
                 } satisfies SQSRecord<Q>;
               }),
             ),

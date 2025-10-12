@@ -12,7 +12,7 @@ export function Plan({ plan }: PlanProps): React.JSX.Element {
   const items = useMemo(
     () =>
       Array.from(Object.values(plan)).sort((a, b) =>
-        a.resource.ID.localeCompare(b.resource.ID),
+        a.resource.id.localeCompare(b.resource.id),
       ),
     [plan],
   );
@@ -61,13 +61,13 @@ export function Plan({ plan }: PlanProps): React.JSX.Element {
           const hasBindings = item.bindings && item.bindings.length > 0;
 
           return (
-            <Box key={item.resource.ID} flexDirection="column">
+            <Box key={item.resource.id} flexDirection="column">
               <Box flexDirection="row">
                 <Box width={2}>
                   <Text color={color}>{icon} </Text>
                 </Box>
                 <Box width={12}>
-                  <Text bold>{item.resource.ID}</Text>
+                  <Text bold>{item.resource.id}</Text>
                 </Box>
                 <Box width={25}>
                   <Text color="blackBright">({item.resource.type})</Text>
