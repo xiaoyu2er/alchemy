@@ -10,7 +10,7 @@ import { Service } from "./service.ts";
 export const bind = <
   Run extends Runtime,
   Svc extends Service,
-  const Props extends Run["InputProps"],
+  const Props extends Run["Props"],
 >(
   runtime: Run,
   svc: Svc,
@@ -28,11 +28,16 @@ export const bind = <
   >;
 
   type Plan = {
-    [id in Svc["id"]]: Runtime.Instance<
+    [id in Svc["id"]]: Bound<
       Run,
       Resource.Instance<Svc>,
       Cap,
-      Props
+      Props,
+      {
+        [k in keyof (Run & { Props: Props })["Attr"]]: (Run & {
+          Props: Props;
+        })["Attr"][k];
+      }
     >;
   } & {
     [id in Exclude<Cap["Resource"]["ID"], Svc["id"]>]: Extract<
@@ -60,7 +65,14 @@ export const bind = <
           bindings?.capabilities.map((cap) => runtime(cap) as any) ?? [],
         // TODO(sam): this should be passed to an Effect that interacts with the Provider
         props,
-      } satisfies Bound<Run, Svc, Cap, Props>,
+        attr: undefined!,
+      } satisfies Bound<
+        Run,
+        Svc,
+        Cap,
+        Props,
+        (Run & { InputProps: Props })["Attr"]
+      >,
     };
   }) as Effect.Effect<
     {

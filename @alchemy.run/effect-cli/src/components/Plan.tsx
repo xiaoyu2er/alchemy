@@ -1,7 +1,7 @@
 // biome-ignore lint/style/useImportType: UMD global
 import React, { useMemo } from "react";
 
-import type { BindNode, CrudNode, Plan } from "@alchemy.run/effect";
+import type { BindNode, CRUD, Plan } from "@alchemy.run/effect";
 import { Box, Text } from "ink";
 
 export interface PlanProps {
@@ -110,7 +110,7 @@ export function Plan({ plan }: PlanProps): React.JSX.Element {
 
 type Color = Parameters<typeof Text>[0]["color"];
 
-const actionColor = (action: CrudNode["action"]): Color =>
+const actionColor = (action: CRUD["action"]): Color =>
   ({
     noop: "gray",
     create: "green",
@@ -119,7 +119,7 @@ const actionColor = (action: CrudNode["action"]): Color =>
     replace: "orange",
   })[action];
 
-const actionIcon = (action: CrudNode["action"]): string =>
+const actionIcon = (action: CRUD["action"]): string =>
   ({
     create: "+",
     update: "~",

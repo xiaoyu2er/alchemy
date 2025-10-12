@@ -32,9 +32,11 @@ export declare namespace Resource {
 export interface Resource<
   Type extends ResourceType = ResourceType,
   ID extends ResourceID = ResourceID,
-  Props extends ResourceProps = ResourceProps,
-  Attr extends ResourceAttr = ResourceAttr,
-  Parent = never,
+  // @ts-expect-error
+  Props extends ResourceProps = unknown,
+  // @ts-expect-error
+  Attr extends ResourceAttr = unknown,
+  Parent = unknown,
 > {
   Kind: "Resource";
   Type: Type;
@@ -43,12 +45,12 @@ export interface Resource<
   /** @internal phantom type */
   Attr: Attr;
   Parent: Parent;
-  new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
+  // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
 }
 
 export const Resource = <const Type extends string>(type: Type) => {
   interface R {
-    new (_: never): {};
+    new (...args: any[]): unknown;
   }
   abstract class R {
     static readonly Type = type;
@@ -86,7 +88,9 @@ export const Resource = <const Type extends string>(type: Type) => {
       readonly Attr: any;
       readonly Class: Self;
 
-      new (): {
+      new (
+        ...args: any[]
+      ): {
         readonly Kind: "Resource";
         readonly Type: Type;
         readonly ID: ID;

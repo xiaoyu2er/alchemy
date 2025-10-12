@@ -1,35 +1,21 @@
-import type { HKT, Types } from "effect";
+import type { Types } from "effect";
 import * as Context from "effect/Context";
+import type { Capability } from "./capability.ts";
+import type { Resource } from "./resource.ts";
+import type { Service } from "./service.ts";
 
 export interface RuntimeType<Name extends string = string>
-  extends HKT.TypeLambda {
+  extends Resource<Name> {
   new (...args: any[]): {};
   Name: Name;
+  /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
   Svc: unknown;
+  Service: Extract<this["Svc"], Service>;
+  /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
   Cap: unknown;
-  Props: unknown;
-  Attr: unknown;
-
-  Instance: unknown;
-
-  InputProps: unknown;
+  Capability: Extract<this["Cap"], Capability>;
 }
 export declare namespace Runtime {
-  export type Instance<F extends RuntimeType, Svc, Cap, Props> = F extends {
-    readonly Instance: unknown;
-  }
-    ? (F & {
-        readonly Svc: Svc;
-        readonly Cap: Cap;
-        readonly Props: Props;
-      })["Instance"]
-    : {
-        readonly F: F;
-        readonly Svc: Types.Covariant<Svc>;
-        readonly Cap: Types.Contravariant<Cap>;
-        readonly Props: Types.Contravariant<Props>;
-      };
-
   export type Binding<F extends RuntimeType, Cap> = F extends {
     readonly Binding: unknown;
   }

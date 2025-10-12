@@ -9,12 +9,9 @@ import { Service } from "./service.ts";
 import type * as lambda from "aws-lambda";
 import { bind } from "./bind.ts";
 import { Binding, Bindings } from "./binding.ts";
+import { plan } from "./plan.ts";
 import { Resource } from "./resource.ts";
 import { Runtime } from "./runtime.ts";
-
-// export interface LambdaFunctionInstance extends TypeLambda {
-//   readonly type: LambdaFunction<this["Target"], this["Input"], this["Output"]>;
-// }
 
 export type LambdaFunctionProps = {
   main: string;
@@ -25,29 +22,14 @@ export type LambdaFunctionProps = {
   url?: boolean;
 };
 
-export type LambdaFunctionAttr<Props extends LambdaFunctionProps> = {
+export type LambdaFunctionAttr<Props> = {
   readonly functionName: string;
-  readonly functionUrl: Props["url"] extends true ? string : undefined;
+  readonly functionUrl: Props extends { url: true } ? string : undefined;
 };
 
-export interface LambdaFunction<
-  Svc extends Service = Service,
-  Cap extends Capability = Capability,
-  Props extends LambdaFunctionProps = LambdaFunctionProps,
-  Output = any,
-> extends Runtime<"AWS.Lambda.Function"> {
-  readonly Instance: LambdaFunction<
-    Extract<this["Svc"], Service>,
-    Extract<this["Cap"], Capability>,
-    Extract<this["Props"], LambdaFunctionProps>,
-    {
-      [key in keyof LambdaFunctionAttr<
-        Extract<this["Props"], Props>
-      >]: LambdaFunctionAttr<Extract<this["Props"], Props>>[key];
-    }
-  >;
-  readonly Binding: Lambda<Extract<this["Cap"], Capability>>;
-  readonly InputProps: Props;
+export interface LambdaFunction extends Runtime<"AWS.Lambda.Function"> {
+  readonly Binding: Lambda<this["Capability"]>;
+  readonly Attr: LambdaFunctionAttr<this["Props"]>;
 }
 
 export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
@@ -342,8 +324,6 @@ class MessageConsumer extends consume(
   }),
 ) {}
 
-// console.log(Bindings(SendMessage(Messages)));
-
 // Materialize Infrastructure
 const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   main: "./src/index.ts",
@@ -353,33 +333,28 @@ const echo = bind(Lambda, EchoService, Bindings(SendMessage(Messages)), {
   url: true,
 });
 
-// const consumer = bind(
-//   Worker,
-//   MessageConsumer,
-//   // sqs:SendMessage and sqs:Consume (IAM Policies)
-//   Bindings(SendMessage(Messages), Consume(Messages)),
-//   {
-//     main: "./src/index.ts",
-//     handler: "index.handler",
-//     runtime: "nodejs20x",
-//     architecture: "arm64",
-//     url: true,
-//   },
-// );
+const consumer = bind(
+  Lambda,
+  MessageConsumer,
+  // sqs:SendMessage and sqs:Consume (IAM Policies)
+  Bindings(SendMessage(Messages), Consume(Messages)),
+  {
+    main: "./src/index.ts",
+    handler: "index.handler",
+    runtime: "nodejs20x",
+    architecture: "arm64",
+    url: true,
+  },
+);
 
 const e = await echo.pipe(
   Effect.provide(lambdaSendSQSMessage),
   Effect.runPromise,
 );
 
-console.log(e);
+console.log(e["echo-service"]);
 
-// const L = Lambda(SendMessage(Messages));
-
-// console.log("lambda", L);
-
-// console.log(e);
-// const echoPlan = plan({
-//   phase: "update",
-//   resources: [echo],
-// });
+const echoPlan = plan({
+  phase: "update",
+  resources: [echo, consumer],
+});

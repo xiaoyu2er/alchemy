@@ -15,12 +15,14 @@ export type Bound<
   Run extends Runtime = Runtime,
   Svc = Service,
   Bindings = Binding,
-  Props = any,
+  Props = unknown,
+  Attr = unknown,
 > = {
   type: "bound";
   svc: Svc;
   bindings: Bindings[];
   props: Props;
+  attr: Attr;
 };
 
 export const isBoundDecl = (value: any): value is Bound =>
@@ -38,28 +40,25 @@ export type Attach<B extends Binding = Binding> = {
   action: "attach";
   binding: B;
   olds?: SerializedBinding<B>;
-  attributes: B["Identifier"]["Resource"]["Attr"];
+  attributes: B["Cap"]["Resource"]["Attr"];
 };
 
 export type Detach<B extends Binding = Binding> = {
   action: "detach";
   binding: B;
-  attributes: B["Identifier"]["Resource"]["Attr"];
+  attributes: B["Cap"]["Resource"]["Attr"];
 };
 
 export type NoopBind<B extends Binding = Binding> = {
   action: "noop";
   binding: B;
-  attributes: B["Identifier"]["Resource"]["Attr"];
+  attributes: B["Cap"]["Resource"]["Attr"];
 };
 
 /**
  * A node in the plan that represents a resource CRUD operation.
  */
-export type CrudNode<
-  R extends Resource = Resource,
-  B extends Binding = Binding,
-> =
+export type CRUD<R extends Resource = Resource, B extends Binding = Binding> =
   | Create<R, B>
   | Update<R, B>
   | Delete<R, B>
@@ -126,7 +125,7 @@ type PlanItem = Effect.Effect<
 
 type ApplyAll<
   Items extends PlanItem[],
-  Accum extends Record<string, CrudNode> = {},
+  Accum extends Record<string, CRUD> = {},
 > = Items extends [
   infer Head extends PlanItem,
   ...infer Tail extends PlanItem[],
@@ -148,9 +147,9 @@ type Apply<T, Cap extends Binding = never> = T extends Bound<
   infer From,
   infer Bindings extends Binding
 >
-  ? CrudNode<From, Bindings | Cap>
+  ? CRUD<From, Bindings | Cap>
   : T extends Resource
-    ? CrudNode<T, Cap>
+    ? CRUD<T, Cap>
     : never;
 
 type DerivePlan<
@@ -175,7 +174,7 @@ type DerivePlan<
     };
 
 export type Plan = {
-  [id in string]: CrudNode;
+  [id in string]: CRUD;
 };
 
 export const plan = <
