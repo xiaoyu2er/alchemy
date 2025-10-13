@@ -32,31 +32,33 @@ export const Service = <
   type Err = Effect.Effect.Error<HandlerEffect>;
   type Req = Effect.Effect.Context<HandlerEffect>;
 
-  return Object.assign(
-    class {
-      static readonly kind = "Service";
-      static readonly id = id;
-      static readonly impl = impl;
-      static readonly capability = capability;
-
-      readonly kind = "Service";
-      readonly id = id;
-      readonly impl = impl;
-      readonly capability = capability;
-      constructor(_: never) {}
-    } as Service<ID, Handler, Cap>,
-    Effect.gen(function* () {
-      return impl as any;
-    }) as Effect.Effect<
-      (...inputs: Parameters<Handler>) => Effect.Effect<
-        A,
-        Err,
-        // erase the requirements (move them to the outer Effect)
-        never
-      >,
-      never,
-      // erase the Capabilities from the Requirements as they are infra-only
-      Req
+  const eff = Effect.gen(function* () {
+    return impl as any;
+  }) as Effect.Effect<
+    (...inputs: Parameters<Handler>) => Effect.Effect<
+      A,
+      Err,
+      // erase the requirements (move them to the outer Effect)
+      never
     >,
-  );
+    never,
+    // erase the Capabilities from the Requirements as they are infra-only
+    Req
+  >;
+  const svc = class {
+    static readonly kind = "Service";
+    static readonly id = id;
+    static readonly impl = impl;
+    static readonly capability = capability;
+
+    readonly kind = "Service";
+    readonly id = id;
+    readonly impl = impl;
+    readonly capability = capability;
+    constructor(_: never) {}
+  } as Service<ID, Handler, Cap>;
+
+  return Object.assign(svc, eff, {
+    pipe: eff.pipe.bind(svc),
+  });
 };

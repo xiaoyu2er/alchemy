@@ -90,12 +90,15 @@ export function Plan({ plan }: PlanProps): React.JSX.Element {
                   const bindingColor = bindingActionColor(binding.action);
                   const bindingIcon = bindingActionIcon(binding.action);
                   return (
-                    <Box key={binding.stmt.resource.ID} flexDirection="row">
+                    <Box
+                      key={binding.capability.resource.ID}
+                      flexDirection="row"
+                    >
                       <Box width={4}>
                         <Text color={bindingColor}> {bindingIcon}</Text>
                       </Box>
                       <Box width={40}>
-                        <Text color="cyan">{binding.stmt.label}</Text>
+                        <Text color="cyan">{binding.capability.label}</Text>
                       </Box>
                     </Box>
                   );

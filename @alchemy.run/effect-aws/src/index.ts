@@ -13,6 +13,11 @@ export const providers = Layer.merge(
   Layer.provide(SQS.queueProvider(), SQS.client()),
 );
 
+export const bindings = Layer.mergeAll(
+  //
+  SQS.sendMessageFromLambdaFunction(),
+);
+
 export const clients = Layer.mergeAll(
   STS.client(),
   IAM.client(),
@@ -22,6 +27,7 @@ export const clients = Layer.mergeAll(
 );
 
 export const defaultProviders = providers.pipe(
+  Layer.provideMerge(bindings),
   Layer.provideMerge(Account.fromIdentity()),
   Layer.provide(clients),
 );

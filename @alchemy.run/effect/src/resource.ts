@@ -137,7 +137,7 @@ const createClass = <
     static readonly Attr = {} as any;
 
     readonly kind = "Resource";
-    readonly Type = type;
+    readonly type = type;
     readonly id = id;
     readonly props = props;
     readonly attr = {} as any;

@@ -46,8 +46,8 @@ export const Binding =
 export type BindingService<
   R extends Resource = Resource,
   Props = any,
-  AttachReq = any,
-  DetachReq = any,
+  AttachReq = never,
+  DetachReq = never,
 > = {
   attach: (
     resource: R["attr"],

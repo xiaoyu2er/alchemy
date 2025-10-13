@@ -279,6 +279,7 @@ export const plan = <
                               olds: oldState.props,
                               news,
                               output: oldState.output,
+                              bindings: capabilities,
                             });
                             if (diff.action === "noop") {
                               return {

@@ -6,7 +6,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
-import { App, DotAlchemy, Provider, type BindNode } from "@alchemy.run/effect";
+import {
+  App,
+  DotAlchemy,
+  Provider,
+  type BindingService,
+  type BindNode,
+  type ProviderService,
+} from "@alchemy.run/effect";
 
 import type {
   CreateFunctionUrlConfigRequest,
@@ -20,6 +27,7 @@ import { FunctionClient } from "./function.client.ts";
 import {
   FunctionType,
   Lambda,
+  type Function,
   type FunctionAttributes,
   type FunctionProps,
 } from "./function.ts";
@@ -63,7 +71,11 @@ export const functionProvider = () =>
 
         for (const binding of bindings) {
           if (binding.action === "attach") {
-            const binder = yield* Lambda(binding.capability);
+            const binder = yield* Lambda(
+              binding.capability,
+              // erase the Lambda(Capability) requirement
+              // TODO(sam): move bindings into the core engine instead of replicating them here
+            ) as unknown as Effect.Effect<BindingService, never, never>;
             const bound = yield* binder.attach(binding.attributes, {
               env,
               policyStatements,
@@ -361,7 +373,7 @@ export const functionProvider = () =>
             // example: refresh the function URL from the API
             return {
               ...output,
-              functionUrl: yield* lambda
+              functionUrl: (yield* lambda
                 .getFunctionUrlConfig({
                   FunctionName: createFunctionName(id),
                 })
@@ -370,7 +382,7 @@ export const functionProvider = () =>
                   Effect.catchTag("ResourceNotFoundException", () =>
                     Effect.succeed(undefined),
                   ),
-                ),
+                )) as any,
             } satisfies FunctionAttributes<FunctionProps>;
           }
           return output;
@@ -551,6 +563,6 @@ export const functionProvider = () =>
             .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
           return null as any;
         }),
-      } as any; // satisfies ProviderService<Function>;
+      } as any satisfies ProviderService<Function>;
     }),
   );

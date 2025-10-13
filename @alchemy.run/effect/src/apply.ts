@@ -179,6 +179,7 @@ export const apply = <const P extends Plan, Err, Req>(
                       olds: node.olds,
                       output: node.output,
                       session: scopedSession,
+                      bindings: [],
                     })
                     .pipe(
                       Effect.flatMap(() => state.delete(id)),
@@ -192,6 +193,7 @@ export const apply = <const P extends Plan, Err, Req>(
                       olds: node.olds,
                       output: node.output,
                       session: scopedSession,
+                      bindings: [],
                     });
                   });
                   const create = Effect.gen(function* () {
@@ -249,7 +251,7 @@ export const apply = <const P extends Plan, Err, Req>(
     {
       [id in keyof P]: P[id] extends Delete<AnyResource> | undefined | never
         ? never
-        : Simplify<P[id]["resource"]["attributes"]>;
+        : Simplify<P[id]["resource"]["attr"]>;
     } extends infer O
       ? O extends {
           [key: string]: never;
