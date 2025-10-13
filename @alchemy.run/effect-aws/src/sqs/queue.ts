@@ -1,24 +1,18 @@
-import type * as lambda from "aws-lambda";
-
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
 import type * as S from "effect/Schema";
 
-import type { Resource } from "@alchemy.run/effect";
-import { consume } from "./queue.consumer.ts";
-import { QueueProvider } from "./queue.provider.ts";
+import { Resource } from "@alchemy.run/effect";
 
 // required to avoid this error in consumers: "The inferred type of 'Messages' cannot be named without a reference to '../../effect-aws/node_modules/@types/aws-lambda'. This is likely not portable. A type annotation is necessary.ts(2742)"
 export type * as lambda from "aws-lambda";
 
 export type QueueType = typeof QueueType;
-export const QueueType = "AWS::SQS::Queue";
+export const QueueType = "AWS.SQS.Queue";
 
 export type QueueProps<Msg = any> = {
   /**
    * Schema for the message body.
    */
-  message: S.Schema<Msg>;
+  schema: S.Schema<Msg>;
   /**
    * Name of the queue.
    * @default ${app}-${stage}-${id}?.fifo
@@ -76,45 +70,17 @@ export type QueueProps<Msg = any> = {
     }
 );
 
-export type QueueAttributes<ID extends string, P extends QueueProps> = {
-  type: typeof QueueType;
-  id: ID;
-  queueName: P["queueName"] extends string ? P["queueName"] : string;
-  queueUrl: string;
-  queueArn: string;
-};
-
-export type Queue<
+export class Queue<
   ID extends string = string,
-  P extends QueueProps = QueueProps,
-> = Resource<
-  typeof QueueType,
-  ID,
-  P,
-  QueueAttributes<ID, P>,
-  typeof QueueProvider
->;
-
-export const Queue = <ID extends string, P extends QueueProps>(
-  id: ID,
-  props: P,
-) =>
-  Object.assign(Context.Tag(id)<P, QueueAttributes<ID, P>>(), {
-    kind: "Resource",
-    type: QueueType,
-    id,
-    props,
-    provider: QueueProvider,
-    // phantom
-    attributes: undefined! as QueueAttributes<ID, P>,
-    consume<Self, const ID extends string, Err, Req>(
-      this: Self,
-      id: ID,
-      handler: (
-        event: lambda.SQSEvent,
-        context: lambda.Context,
-      ) => Effect.Effect<lambda.SQSBatchResponse | void, Err, Req>,
-    ) {
-      return consume(this as Extract<Self, Queue>, id, handler);
-    },
-  } as const);
+  Props extends QueueProps = QueueProps,
+> extends Resource(QueueType) {
+  declare attr: {
+    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+  };
+  constructor(
+    readonly id: ID,
+    readonly props: Props,
+  ) {
+    super(id, props);
+  }
+}

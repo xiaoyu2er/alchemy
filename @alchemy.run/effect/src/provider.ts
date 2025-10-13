@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type { ScopedPlanStatusSession } from "./apply.ts";
 import type { Resource, ResourceClass } from "./resource.ts";
 import type { AnyRuntime } from "./runtime.ts";
 
@@ -36,30 +37,36 @@ export interface ProviderService<Res extends Resource = Resource> {
     olds: Res["props"] | undefined;
     // what is the ARN?
     output: Res["attr"] | undefined; // current state -> synced state
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<Res["attr"] | undefined, any, never>;
   diff?(input: {
     id: string;
     olds: Res["props"];
     news: Res["props"];
     output: Res["attr"];
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<Diff, never, never>;
   stub?(input: {
     id: string;
     news: Res["props"];
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<Res["attr"], any, never>;
   create(input: {
     id: string;
     news: Res["props"];
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<Res["attr"], any, never>;
   update(input: {
     id: string;
     news: Res["props"];
     olds: Res["props"];
     output: Res["attr"];
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<Res["attr"], any, never>;
   delete(input: {
     id: string;
     olds: Res["props"];
     output: Res["attr"];
+    session: ScopedPlanStatusSession;
   }): Effect.Effect<void, any, never>;
 }

@@ -3,17 +3,16 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Capability, type CapabilityType } from "./capability.ts";
+import { Capability } from "./capability.ts";
 import { Provider } from "./provider.ts";
 import { Service } from "./service.ts";
 
-import type * as lambda from "aws-lambda";
 import { app } from "./app.ts";
+import { apply } from "./apply.ts";
 import { bind } from "./bind.ts";
 import { Binding, Bindings } from "./binding.ts";
 import { dotAlchemy } from "./dot-alchemy.ts";
 import { plan } from "./plan.ts";
-import { Resource } from "./resource.ts";
 import { Runtime } from "./runtime.ts";
 import * as State from "./state.ts";
 
@@ -46,6 +45,7 @@ export interface LambdaFunction<
     this["attr"]
   >;
 }
+
 export const Lambda = Runtime("AWS.Lambda.Function")<LambdaFunction>();
 
 export interface Lambda<Cap extends Capability>
@@ -57,25 +57,6 @@ export interface Lambda<Cap extends Capability>
       policyStatements: any[];
     }
   > {}
-
-export const lambdaFunctionProvider = Layer.succeed(
-  Provider(Lambda),
-  Provider(Lambda).of({
-    create: Effect.fn(function* () {
-      return {
-        functionName: "test",
-        functionUrl: "test",
-      };
-    }),
-    update: Effect.fn(function* () {
-      return {
-        functionName: "test",
-        functionUrl: "test",
-      };
-    }),
-    delete: Effect.fn(function* () {}),
-  }),
-);
 
 // Cloudflare Worker (Host)
 export type WorkerProps = {
@@ -110,26 +91,6 @@ export interface Worker<Cap extends Capability>
     }
   > {}
 
-export type QueueProps<Message = any> = {
-  fifo?: boolean;
-  schema: S.Schema<Message>;
-};
-
-// SQS Queue (Resource)
-export class Queue<
-  ID extends string = string,
-  Props extends QueueProps = QueueProps,
-> extends Resource("AWS.SQS.Queue") {
-  declare attr: {
-    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-  };
-  constructor(
-    readonly id: ID,
-    readonly props: Props,
-  ) {
-    super(id, props);
-  }
-}
 export const queueProvider = Layer.succeed(
   Provider(Queue),
   Provider(Queue).of({
@@ -148,85 +109,6 @@ export const queueProvider = Layer.succeed(
     delete: Effect.fn(function* () {}),
   }),
 );
-
-export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
-  body: Data;
-};
-
-export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
-  Records: SQSRecord<Data>[];
-};
-
-// "Pull" function
-export function consume<Q extends Queue, ID extends string, Req>(
-  queue: Q,
-  id: ID,
-  handler: (
-    event: SQSEvent<Q["props"]["schema"]["Type"]>,
-    context: lambda.Context,
-  ) => Effect.Effect<lambda.SQSBatchResponse | void, never, Req>,
-) {
-  const schema = queue.props.schema;
-  return Service(
-    id,
-    Effect.fn(function* (event: lambda.SQSEvent, context: lambda.Context) {
-      const records = yield* Effect.all(
-        event.Records.map(
-          Effect.fn(function* (record) {
-            return {
-              ...record,
-              body: yield* S.validate(schema)(record.body).pipe(
-                Effect.catchAll(() => Effect.void),
-              ),
-            };
-          }),
-        ),
-      );
-      const response = yield* handler(
-        {
-          Records: records.filter((record) => record.body !== undefined),
-        },
-        context,
-      );
-      return {
-        batchItemFailures: [
-          ...(response?.batchItemFailures ?? []),
-          ...records
-            .filter((record) => record.body === undefined)
-            .map((failed) => ({
-              itemIdentifier: failed.messageId,
-            })),
-        ],
-      } satisfies lambda.SQSBatchResponse;
-    }),
-    Consume(queue),
-  );
-}
-
-// Consume (Binding)
-export interface ConsumeClass extends CapabilityType<"AWS.SQS.Consume", Queue> {
-  readonly type: Consume<Resource.Instance<this["Target"]>>;
-}
-export const Consume = Capability("AWS.SQS.Consume", Queue)<ConsumeClass>();
-export interface Consume<Q>
-  extends Capability<"AWS.SQS.Consume", Q, ConsumeClass> {}
-
-// SendMessage (Binding)
-export interface SendMessageClass
-  extends CapabilityType<"AWS.SQS.SendMessage", Queue> {
-  readonly type: SendMessage<Resource.Instance<this["Target"]>>;
-}
-export const SendMessage = Capability(
-  "AWS.SQS.SendMessage",
-  Queue,
-)<SendMessageClass>();
-export interface SendMessage<Q>
-  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
-
-export declare const sendMessage: <Q extends Queue>(
-  queue: Q,
-  message: Q["props"]["schema"]["Type"],
-) => Effect.Effect<void, never, SendMessage<Resource.Instance<Q>>>;
 
 // bind a Queue to an AWS Lambda function
 export const lambdaQueueEventSource = Layer.effect(
@@ -364,21 +246,19 @@ const consumer = bind(
   },
 );
 
-// console.log(await echo.pipe(Effect.runPromise));
+const echoPlan = plan({
+  phase: "update",
+  resources: [echo, consumer],
+});
 
-if (import.meta.main) {
-  const echoPlan = await plan({
-    phase: "update",
-    resources: [echo, consumer],
-  }).pipe(
-    Effect.provide(dotAlchemy),
-    Effect.provide(State.localFs),
-    Effect.provide(app({ name: "my-iae-app", stage: "dev" })),
-    Effect.provide(NodeContext.layer),
-    Effect.provide(lambdaSendSQSMessage),
-    Effect.provide(lambdaFunctionProvider),
-    Effect.provide(queueProvider),
-    Effect.runPromise,
-  );
-  console.log(echoPlan);
-}
+const resources = await apply(echoPlan).pipe(
+  Effect.provide(dotAlchemy),
+  Effect.provide(State.localFs),
+  Effect.provide(app({ name: "my-iae-app", stage: "dev" })),
+  Effect.provide(NodeContext.layer),
+  Effect.provide(lambdaSendSQSMessage),
+  Effect.provide(lambdaFunctionProvider),
+  Effect.provide(queueProvider),
+  Effect.runPromise,
+);
+console.log(resources);

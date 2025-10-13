@@ -1,4 +1,4 @@
-import type { Statement } from "@alchemy.run/effect";
+import type { Capability } from "@alchemy.run/effect";
 import type { Context as LambdaContext } from "aws-lambda";
 import * as Effect from "effect/Effect";
 
@@ -7,7 +7,7 @@ type Handler = (
   context: LambdaContext,
 ) => Effect.Effect<any, any, never>;
 
-type HandlerEffect<Req = Statement> = Effect.Effect<Handler, any, Req>;
+type HandlerEffect<Req = Capability> = Effect.Effect<Handler, any, Req>;
 
 const memo = Symbol.for("alchemy::memo");
 
@@ -18,11 +18,13 @@ const resolveHandler = async (
   },
 ) =>
   (effect[memo] ??= await Effect.runPromise(
-    // safe to cast away the Statement requirements since they are phantoms
+    // safe to cast away the Capability requirements since they are phantoms
     effect as HandlerEffect<never>,
   ));
 
 export const toHandler =
-  (effect: Effect.Effect<Handler, any, Statement>) =>
+  <H extends Handler>(effect: Effect.Effect<H, any, Capability>) =>
   async (event: any, context: LambdaContext) =>
-    (await resolveHandler(effect))(event, context);
+    Effect.runPromise(
+      (await resolveHandler(effect))(event, context),
+    ) as Promise<Effect.Effect.Success<ReturnType<H>>>;

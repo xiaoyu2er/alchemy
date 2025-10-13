@@ -227,6 +227,10 @@ export const apply = <const P extends Plan, Err, Req>(
           yield* Effect.all(
             Object.entries(plan).map(
               Effect.fn(function* ([id, node]) {
+                console.log(id, node);
+                if (1 == 1) {
+                  process.exit(0);
+                }
                 return [id, yield* apply(node as P[keyof P])];
               }),
             ),

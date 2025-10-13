@@ -6,31 +6,43 @@ import * as Effect from "effect/Effect";
 import * as Alchemy from "@alchemy.run/effect";
 import * as AWS from "@alchemy.run/effect-aws";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
+import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as AlchemyCLI from "@alchemy.run/effect-cli";
 
-import { api } from "./src/index.ts";
+import { Api, Messages } from "./src/index.ts";
 
 // TODO(sam): combine this with Alchemy.plan to do it all in one-line
 const app = Alchemy.app({ name: "my-iae-app", stage: "dev" });
 
 const src = join(import.meta.dirname, "src");
 
-// const A = Lambda.make(api, {
-//   main: join(src, "api.ts"),
-//   // bindings: attach(SQS.SendMessage(Messages)),
-// });
-
-// const C = Lambda.make(Consumer, {
-//   main: join(src, "consumer-handler.ts"),
-// });
-
-const stack = await Alchemy.plan({
+const plan = Alchemy.plan({
   phase: process.argv.includes("--destroy") ? "destroy" : "update",
   resources: [
-    Lambda.make(api, {
-      main: join(src, "api.ts"),
-      bindings: attach(SQS.SendMessage(Messages)),
-    }),
+    Alchemy.bind(
+      Lambda.Lambda,
+      Api,
+      Alchemy.Bindings(SQS.SendMessage(Messages)),
+      {
+        main: join(src, "api.ts"),
+        url: true,
+      },
+    ),
+  ],
+}).pipe(Alchemy.apply);
+
+const stack = Alchemy.plan({
+  phase: process.argv.includes("--destroy") ? "destroy" : "update",
+  resources: [
+    Alchemy.bind(
+      Lambda.Lambda,
+      Api,
+      Alchemy.Bindings(SQS.SendMessage(Messages)),
+      {
+        main: join(src, "api.ts"),
+        url: true,
+      },
+    ),
   ],
 }).pipe(
   Alchemy.apply,
@@ -41,7 +53,7 @@ const stack = await Alchemy.plan({
   Effect.provide(Alchemy.State.localFs),
   Effect.provide(NodeContext.layer),
   Effect.provide(app),
-  Effect.runPromise,
+  // Effect.runPromise,
 );
 
 if (stack) {

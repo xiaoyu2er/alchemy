@@ -1,17 +1,16 @@
+import { Service } from "@alchemy.run/effect";
+import * as Effect from "effect/Effect";
+
 import type {
   Context as LambdaContext,
   LambdaFunctionURLEvent,
   LambdaFunctionURLResult,
 } from "aws-lambda";
 
-import { Service } from "@alchemy.run/effect";
-
-/**
- * A Lambda Function serving a HTTP endpoint as a public URL.
- */
-export const serve = Service("AWS::Lambda::Function.serve")<
-  (
+export const serve = <const ID extends string, Req>(
+  id: ID,
+  handler: (
     event: LambdaFunctionURLEvent,
     context: LambdaContext,
-  ) => LambdaFunctionURLResult
->();
+  ) => Effect.Effect<LambdaFunctionURLResult, never, Req>,
+) => Service(id, handler);

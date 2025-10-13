@@ -10,22 +10,24 @@ export const Message = S.Struct({
 });
 
 // resource declaration
-export class Messages extends SQS.Queue("messages", {
+export class Messages extends SQS.Queue.create("messages", {
   fifo: true,
-  message: Message,
+  schema: Message,
 }) {}
 
 // business logic
-export const Consumer = Messages.consume(
+export class Consumer extends SQS.consume(
+  Messages,
   "consumer",
   Effect.fn(function* (batch) {
     for (const record of batch.Records) {
       console.log(record);
     }
   }),
-);
-
-const foo = Consumer.pipe();
+) {}
 
 // runtime handler
-export default Consumer.pipe(SQS.clientFromEnv(), Lambda.toHandler);
+export default Consumer.pipe(
+  Effect.provide(SQS.clientFromEnv()),
+  Lambda.toHandler,
+);

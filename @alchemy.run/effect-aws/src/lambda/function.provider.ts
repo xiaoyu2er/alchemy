@@ -1,19 +1,13 @@
-import { FileSystem } from "@effect/platform";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Schedule from "effect/Schedule";
 import crypto from "node:crypto";
 import path from "node:path";
 
-import {
-  App,
-  DotAlchemy,
-  type BindingLifecycle,
-  type BindNode,
-  type ProviderService,
-  type Statement,
-} from "@alchemy.run/effect";
+import { FileSystem } from "@effect/platform";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
+
+import { App, DotAlchemy, Provider, type BindNode } from "@alchemy.run/effect";
+
 import type {
   CreateFunctionUrlConfigRequest,
   UpdateFunctionUrlConfigRequest,
@@ -25,35 +19,14 @@ import { zipCode } from "../zip.ts";
 import { FunctionClient } from "./function.client.ts";
 import {
   FunctionType,
+  Lambda,
   type FunctionAttributes,
   type FunctionProps,
 } from "./function.ts";
 
-export interface FunctionProviderProps extends FunctionProps {
-  /**
-   * The main file to use for the function.
-   */
-  main: string;
-  /**
-   * The handler to use for the function.
-   * @default "default"
-   */
-  handler?: string;
-}
-
-export class FunctionProvider extends Context.Tag("AWS::Lambda::Function")<
-  FunctionProvider,
-  ProviderService<
-    FunctionType,
-    FunctionProviderProps,
-    FunctionAttributes<string, FunctionProps>,
-    Statement
-  >
->() {}
-
 export const functionProvider = () =>
   Layer.effect(
-    FunctionProvider,
+    Provider(Lambda),
     Effect.gen(function* () {
       const lambda = yield* FunctionClient;
       const iam = yield* IAM.IAMClient;
@@ -90,19 +63,10 @@ export const functionProvider = () =>
 
         for (const binding of bindings) {
           if (binding.action === "attach") {
-            const binder = yield* binding.stmt.bind as Context.Tag<
-              never,
-              BindingLifecycle
-            >;
-            const bound = yield* binder.attach({
-              host: {
-                functionArn,
-                functionName,
-                env,
-                policyStatements,
-              },
-              binding,
-              resource: binding.attributes,
+            const binder = yield* Lambda(binding.capability);
+            const bound = yield* binder.attach(binding.attributes, {
+              env,
+              policyStatements,
             });
             env = { ...env, ...(bound?.env ?? {}) };
             policyStatements.push(...(bound?.policyStatements ?? []));
@@ -176,18 +140,18 @@ export const functionProvider = () =>
 
       const bundleCode = Effect.fn(function* (
         id: string,
-        props: FunctionProviderProps,
+        props: FunctionProps,
       ) {
         const handler = props.handler ?? "default";
         let file = path.relative(process.cwd(), props.main);
         if (!file.startsWith(".")) {
           file = `./${file}`;
         }
-        const { bundle } = yield* Effect.promise(() => import("../bundle.js"));
+        const { bundle } = yield* Effect.promise(() => import("../bundle.ts"));
         const outfile = path.join(
           dotAlchemy,
           "out",
-          `${app.name}-${app.stage}-${id}.js`,
+          `${app.name}-${app.stage}-${id}.ts`,
         );
         yield* bundle({
           // entryPoints: [props.main],
@@ -262,7 +226,7 @@ export const functionProvider = () =>
         functionName,
       }: {
         id: string;
-        news: FunctionProviderProps;
+        news: FunctionProps;
         roleArn: string;
         code: Uint8Array<ArrayBufferLike>;
         env: Record<string, string>;
@@ -407,7 +371,7 @@ export const functionProvider = () =>
                     Effect.succeed(undefined),
                   ),
                 ),
-            } satisfies FunctionAttributes<string, FunctionProps>;
+            } satisfies FunctionAttributes<FunctionProps>;
           }
           return output;
         }),
@@ -467,8 +431,6 @@ export const functionProvider = () =>
           yield* session.note(summary({ code }));
 
           return {
-            id,
-            type: "AWS::Lambda::Function",
             functionArn,
             functionName,
             functionUrl: functionUrl as any,
@@ -477,7 +439,7 @@ export const functionProvider = () =>
             code: {
               hash,
             },
-          } satisfies FunctionAttributes<string, FunctionProps>;
+          } satisfies FunctionAttributes<FunctionProps>;
         }),
         update: Effect.fn(function* ({
           id,
@@ -530,7 +492,7 @@ export const functionProvider = () =>
             code: {
               hash,
             },
-          } satisfies FunctionAttributes<string, FunctionProps>;
+          } satisfies FunctionAttributes<FunctionProps>;
         }),
         delete: Effect.fn(function* ({ output }) {
           yield* iam
@@ -589,10 +551,6 @@ export const functionProvider = () =>
             .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
           return null as any;
         }),
-      } satisfies ProviderService<
-        FunctionType,
-        FunctionProviderProps,
-        FunctionAttributes<string, FunctionProps>
-      >;
+      } as any; // satisfies ProviderService<Function>;
     }),
   );

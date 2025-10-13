@@ -1,30 +1,35 @@
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { allow, type Allow } from "@alchemy.run/effect";
-import type * as Lambda from "../lambda/index.ts";
+import {
+  allow,
+  Capability,
+  type CapabilityType,
+  type Resource,
+} from "@alchemy.run/effect";
+import { Lambda } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
-import type { Queue, QueueProps } from "./queue.ts";
+import { Queue, type QueueProps } from "./queue.ts";
 
-export type SendMessage<Q extends Queue = Queue> = Allow<"sqs:SendMessage", Q>;
-
-export const SendMessage = <Q extends Queue>(queue: Q) =>
-  ({
-    label: `AWS.SQS.SendMessage(${queue.id})`,
-    effect: "Allow",
-    action: "sqs:SendMessage",
-    resource: queue,
-    provider: SendMessageBinder,
-  }) as const;
+// SendMessage (Binding)
+export interface SendMessageClass
+  extends CapabilityType<"AWS.SQS.SendMessage", Queue> {
+  readonly type: SendMessage<Resource.Instance<this["Target"]>>;
+}
+export const SendMessage = Capability(
+  "AWS.SQS.SendMessage",
+  Queue,
+)<SendMessageClass>();
+export interface SendMessage<Q>
+  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
 
 export const sendMessage = <Q extends Queue<string, QueueProps>>(
   queue: Q,
-  message: Q["props"]["message"]["Type"],
+  message: Q["props"]["schema"]["Type"],
 ) =>
   Effect.gen(function* () {
     // TODO(sam): we want this to be a phantom and not explicitly in the Requirements
-    yield* allow<SendMessage<Q>>();
+    yield* allow<SendMessage<Resource.Instance<Q>>>();
     const sqs = yield* QueueClient;
     const url =
       process.env[`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]!;
@@ -34,12 +39,8 @@ export const sendMessage = <Q extends Queue<string, QueueProps>>(
     });
   });
 
-export class SendMessageBinder extends Context.Tag(
-  "AWS::SQS::Queue.SendMessage",
-)<SendMessageBinder, Lambda.FunctionBinding<SendMessage<Queue>>>() {}
-
-export const sendMessageBinder = () =>
-  Layer.succeed(SendMessageBinder, {
+export const sendMessageFromLambdaFunction = () =>
+  Layer.succeed(Lambda(SendMessage(Queue)), {
     attach: Effect.fn(function* ({ resource: queue, binding }) {
       return {
         env: {
@@ -56,4 +57,4 @@ export const sendMessageBinder = () =>
         ],
       };
     }),
-  } satisfies Lambda.FunctionBinding<SendMessage<Queue>>);
+  });

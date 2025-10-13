@@ -1,34 +1,21 @@
-import type {
-  LambdaFunctionURLEvent,
-  LambdaFunctionURLResult,
-} from "aws-lambda";
-import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import { Binding, Capability, Runtime } from "@alchemy.run/effect";
 
-import {
-  Service,
-  type BindingLifecycle,
-  type Resource,
-  type Statement,
-} from "@alchemy.run/effect";
-import type { Context as LambdaContext } from "aws-lambda";
-import type * as IAM from "../iam.ts";
-import { FunctionProvider } from "./function.provider.ts";
-
+export const FunctionType = "AWS.Lambda.Function";
 export type FunctionType = typeof FunctionType;
-export const FunctionType = "AWS::Lambda::Function";
 
 export type FunctionProps = {
+  main: string;
+  handler?: string;
+  memory?: number;
+  runtime?: "nodejs20x" | "nodejs22x";
+  architecture?: "x86_64" | "arm64";
   url?: boolean;
-  functionName?: string;
 };
 
-export type FunctionAttributes<ID extends string, _P extends FunctionProps> = {
-  type: FunctionType;
-  id: ID;
-  functionName: string;
+export type FunctionAttributes<Props extends FunctionProps = FunctionProps> = {
   functionArn: string;
-  functionUrl: string | undefined;
+  functionName: string;
+  functionUrl: Props["url"] extends true ? string : undefined;
   roleName: string;
   roleArn: string;
   code: {
@@ -36,55 +23,31 @@ export type FunctionAttributes<ID extends string, _P extends FunctionProps> = {
   };
 };
 
-export type Function<
-  ID extends string = string,
-  P extends FunctionProps = FunctionProps,
-> = Resource<
-  FunctionType,
-  ID,
-  P,
-  FunctionAttributes<ID, P>,
-  typeof FunctionProvider
->;
-
-export type FunctionHandler = (
-  event: any,
-  ctx: any,
-) => Effect.Effect<any, any, any>;
-
-export const Function = <ID extends string, P extends FunctionProps>(
-  id: ID,
-  props: P = {} as P,
-) =>
-  Object.assign(
-    Context.Tag(id)() as Context.TagClass<P, ID, FunctionAttributes<ID, P>>,
+export interface Function<
+  svc = unknown,
+  cap = unknown,
+  props extends FunctionProps = FunctionProps,
+  _Attr = unknown,
+> extends Runtime<FunctionType, svc, cap, props> {
+  readonly Binding: Lambda<this["capability"]>;
+  readonly Instance: Function<
+    this["service"],
+    this["capability"],
+    this["props"],
     {
-      kind: "Resource",
-      type: FunctionType,
-      id,
-      props,
-      provider: FunctionProvider,
-      // phantom
-      attributes: undefined! as FunctionAttributes<ID, P>,
-      serve<Self, Err, Req>(
-        this: Self,
-        handler: (
-          event: LambdaFunctionURLEvent,
-          context: LambdaContext,
-        ) => Effect.Effect<LambdaFunctionURLResult, Err, Req>,
-      ) {
-        return Service(id, handler);
-      },
-    } as const,
-  );
-
-export type FunctionBinding<Stmt extends Statement = Statement> =
-  BindingLifecycle<
-    {
-      functionArn: string;
-      functionName: string;
-      env: Record<string, string>;
-      policyStatements: IAM.PolicyStatement[];
-    },
-    Stmt
+      [a in keyof this["attr"]]: this["attr"][a];
+    }
   >;
+  readonly attr: FunctionAttributes<this["props"]>;
+}
+export const Lambda = Runtime(FunctionType)<Function>();
+
+export interface Lambda<Cap extends Capability>
+  extends Binding<
+    Function,
+    Cap,
+    {
+      env: Record<string, string>;
+      policyStatements: any[];
+    }
+  > {}

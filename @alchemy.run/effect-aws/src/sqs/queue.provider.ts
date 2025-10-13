@@ -1,22 +1,16 @@
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
-import { App, type ProviderService } from "@alchemy.run/effect";
+import { App, Provider, type ProviderService } from "@alchemy.run/effect";
 import { AccountID } from "../account.ts";
 import { Region } from "../region.ts";
 import { QueueClient } from "./queue.client.ts";
-import { QueueType, type QueueAttributes, type QueueProps } from "./queue.ts";
-
-export class QueueProvider extends Context.Tag(QueueType)<
-  QueueProvider,
-  ProviderService<QueueType, QueueProps, QueueAttributes<string, QueueProps>>
->() {}
+import { Queue, type QueueProps } from "./queue.ts";
 
 export const queueProvider = () =>
   Layer.effect(
-    QueueProvider,
+    Provider(Queue),
     Effect.gen(function* () {
       const sqs = yield* QueueClient;
       const app = yield* App;
@@ -40,19 +34,18 @@ export const queueProvider = () =>
         VisibilityTimeout: props.visibilityTimeout?.toString(),
       });
       return {
-        type: QueueType,
         diff: Effect.fn(function* ({ id, news, olds }) {
           const oldFifo = olds.fifo ?? false;
           const newFifo = news.fifo ?? false;
           if (oldFifo !== newFifo) {
-            return { action: "replace" };
+            return { action: "replace" } as const;
           }
           const oldQueueName = createQueueName(id, olds);
           const newQueueName = createQueueName(id, news);
           if (oldQueueName !== newQueueName) {
-            return { action: "replace" };
+            return { action: "replace" } as const;
           }
-          return { action: "noop" };
+          return { action: "noop" } as const;
         }),
         create: Effect.fn(function* ({ id, news, session }) {
           const queueName = createQueueName(id, news);
@@ -77,8 +70,6 @@ export const queueProvider = () =>
           const queueUrl = response.QueueUrl!;
           yield* session.note(queueUrl);
           return {
-            id,
-            type: QueueType,
             queueName,
             queueUrl,
             queueArn: queueArn,
@@ -99,10 +90,6 @@ export const queueProvider = () =>
             })
             .pipe(Effect.catchTag("QueueDoesNotExist", () => Effect.void));
         }),
-      } satisfies ProviderService<
-        QueueType,
-        QueueProps,
-        QueueAttributes<string, QueueProps>
-      >;
+      } satisfies ProviderService<Queue>;
     }),
   );

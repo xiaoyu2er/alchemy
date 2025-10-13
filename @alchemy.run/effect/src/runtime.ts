@@ -7,18 +7,18 @@ import type { Resource } from "./resource.ts";
 import type { Service } from "./service.ts";
 
 export interface RuntimeType<
-  type extends string = string,
-  svc = unknown,
-  cap = unknown,
-  props = unknown,
-> extends Resource<type, string, props> {
+  Type extends string = string,
+  Svc = unknown,
+  Cap = unknown,
+  Props = unknown,
+> extends Resource<Type, string, Props> {
   new (...args: any[]): {};
-  type: type;
+  type: Type;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
-  svc: svc;
+  svc: Svc;
   service: Extract<this["svc"], Service>;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
-  cap: cap;
+  cap: Cap;
   capability: Extract<this["cap"], Capability>;
 }
 export declare namespace Runtime {
@@ -29,31 +29,31 @@ export declare namespace Runtime {
     readonly Binding: unknown;
   }
     ? (F & {
-        readonly Cap: Cap;
+        readonly cap: Cap;
       })["Binding"]
     : {
         readonly F: F;
-        readonly Cap: Types.Contravariant<Cap>;
+        readonly cap: Types.Contravariant<Cap>;
       };
 }
 
 export type AnyRuntime = RuntimeType<string, any, any, any>;
 
 export interface Runtime<
-  type extends string = string,
-  svc = unknown,
-  cap = unknown,
-  props = unknown,
-> extends RuntimeType<type, svc, cap, props> {
+  Type extends string = string,
+  Svc = unknown,
+  Cap = unknown,
+  Props = unknown,
+> extends RuntimeType<Type, Svc, Cap, Props> {
   <T>(T: T): Runtime.Binding<this, T>;
 }
 
 export const Runtime =
-  <const Type extends string>(Type: Type) =>
+  <const Type extends string>(type: Type) =>
   <Self>() =>
     Object.assign(
       (cap: Capability) => {
-        const tag = `${Type}(${cap})` as const;
+        const tag = `${type}(${cap})` as const;
         return class extends Context.Tag(tag)<Self, string>() {
           Capability = cap;
           static toString() {
@@ -68,8 +68,8 @@ export const Runtime =
         };
       },
       {
-        Type: Type,
         Kind: "Runtime",
+        Type: type,
         service: undefined! as Service,
         capability: undefined! as Capability[],
         toString() {

@@ -63,6 +63,7 @@ export const Resource = <const Type extends string>(type: Type) => {
 
     readonly kind = "Resource";
     readonly type = type;
+    readonly parent = this.constructor;
     abstract readonly attr: {
       [key: string]: any;
     };
@@ -95,6 +96,7 @@ export const Resource = <const Type extends string>(type: Type) => {
       readonly id: ID;
       readonly props: Props;
       readonly attr: any;
+      readonly parent: Self;
 
       new (
         ...args: any[]
@@ -139,7 +141,7 @@ const createClass = <
     readonly id = id;
     readonly props = props;
     readonly attr = {} as any;
-    readonly Parent = this as any;
+    readonly parent = this as any;
 
     static toString() {
       return `${type}(${id}${

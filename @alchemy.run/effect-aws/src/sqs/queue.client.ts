@@ -1,5 +1,4 @@
 import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { SQS as SQSClient } from "itty-aws/sqs";
@@ -18,9 +17,4 @@ export const client = createAWSServiceClientLayer<
 >(QueueClient, SQSClient);
 
 export const clientFromEnv = () =>
-  Effect.provide(
-    Layer.provide(
-      client(),
-      Layer.merge(Credentials.fromEnv(), Region.fromEnv()),
-    ),
-  );
+  Layer.provide(client(), Layer.merge(Credentials.fromEnv(), Region.fromEnv()));
