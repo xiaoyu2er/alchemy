@@ -36,6 +36,18 @@ export declare namespace Runtime {
         readonly F: F;
         readonly cap: Types.Contravariant<Cap>;
       };
+
+  export type Provider<
+    F extends RuntimeType<string, any, any, any>,
+    Cap,
+    Svc,
+    Props,
+  > = // @ts-expect-error
+  (F & {
+    cap: Cap;
+    svc: InstanceType<Extract<Svc, Service>>;
+    props: Props;
+  })["Provider"];
 }
 
 export type AnyRuntime = RuntimeType<string, any, any, any>;

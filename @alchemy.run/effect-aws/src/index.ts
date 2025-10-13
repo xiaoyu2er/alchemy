@@ -16,6 +16,7 @@ export const providers = Layer.merge(
 export const bindings = Layer.mergeAll(
   //
   SQS.sendMessageFromLambdaFunction(),
+  SQS.consumeFromLambdaFunction(),
 );
 
 export const clients = Layer.mergeAll(
@@ -32,9 +33,9 @@ export const defaultProviders = providers.pipe(
   Layer.provide(clients),
 );
 
-export const layer = defaultProviders.pipe(
+export const live = defaultProviders.pipe(
   Layer.provide(Region.fromEnv()),
   Layer.provide(Credentials.fromChain()),
 );
 
-export default layer;
+export default live;

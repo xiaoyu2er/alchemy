@@ -71,6 +71,7 @@ export type QueueProps<Msg = any> = {
 );
 
 export type QueueAttr<Props extends QueueProps> = {
+  queueName: Props["queueName"] extends string ? Props["queueName"] : string;
   /**
    * URL of the queue.
    */

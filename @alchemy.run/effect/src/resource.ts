@@ -1,20 +1,61 @@
-import util from "node:util";
-import { inspect } from "./inspect.ts";
-
 export type ResourceType = string;
 export type ResourceID = string;
 export type ResourceProps = Record<string, any>;
 export type ResourceAttr = Record<string, any>;
 
-export interface ResourceClass<
-  type extends string = string,
-  Self extends Resource<type> = any,
-> {
+export const Resource =
+  <const Type extends string>(type: Type) =>
+  <Self extends Resource<Type>>(): ResourceClass<Self> =>
+    (<const ID extends string, const Props extends Self["props"]>(
+      id: ID,
+      props: Props,
+    ) => {
+      class Resource {}
+      return Object.assign(Resource, {
+        kind: "Resource",
+        type,
+        id,
+        props,
+        attr: undefined!,
+        parent: Resource!,
+      });
+    }) as unknown as ResourceClass<Self>;
+
+export interface ResourceClass<R extends Resource = Resource> {
   kind: "ResourceClass";
-  type: type;
-  props: unknown;
-  attr: unknown;
-  new (id: string, props: any): Self;
+  type: R["type"];
+  props: R["props"];
+  attr: R["attr"];
+  resource: R;
+  <const ID extends string, const Props extends R["props"]>(
+    id: ID,
+    props: Props,
+  ): {
+    type: R["type"];
+    kind: "Resource";
+    id: ID;
+    props: Props;
+    attr: {
+      [a in keyof (R & { props: Props })["attr"]]: (R & {
+        props: Props;
+      })["attr"][a];
+    };
+    parent: R;
+    new (
+      _: never,
+    ): {
+      type: R["type"];
+      kind: "Resource";
+      parent: R;
+      id: ID;
+      props: Props;
+      attr: {
+        [a in keyof (R & { props: Props })["attr"]]: (R & {
+          props: Props;
+        })["attr"][a];
+      };
+    };
+  };
 }
 
 export declare namespace Resource {
@@ -41,94 +82,5 @@ export interface Resource<type extends ResourceType = ResourceType> {
   parent: unknown;
   // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
   capability?: unknown;
+  // new(_: never): Resource<type>;
 }
-
-export const Resource =
-  <const Type extends string>(type: Type) =>
-  <Self extends Resource<Type>>() => {
-    const fac = <const ID extends string, const Props extends Self["props"]>(
-      id: ID,
-      props: Props,
-    ) => {
-      type Attr = (Self & {
-        props: Props;
-      })["attr"];
-      type ResourceClass = {
-        kind: "Resource";
-        type: Type;
-        id: ID;
-        props: Props;
-        attr: {
-          [k in keyof Attr]: Attr[k];
-        };
-        parent: Self;
-        new (
-          _: never,
-        ): Self & {
-          id: ID;
-          props: Props;
-        };
-      };
-      class Resource {}
-      return Object.assign(Resource, {
-        kind: "Resource",
-        type,
-        id,
-        props,
-        attr: undefined!,
-        parent: Resource!,
-      }) as unknown as ResourceClass;
-    };
-
-    return fac as typeof fac & {
-      // added purely for syntax highlighting (resources highlighted as types/classes)
-      new (_: never): {};
-    };
-  };
-
-const createClass = <
-  Type extends string,
-  ID extends string,
-  Props extends any,
-  Base extends abstract new (
-    ...args: any[]
-  ) => any,
->(
-  type: Type,
-  id: ID,
-  props: Props,
-  Base: Base,
-): any => {
-  abstract class cls extends Base {
-    static readonly kind = "Resource";
-    static readonly Type = type;
-    static readonly id = id;
-    static readonly props = props;
-    static readonly Attr = {} as any;
-
-    readonly kind = "Resource";
-    readonly type = type;
-    readonly id = id;
-    readonly props = props;
-    readonly attr = {} as any;
-    readonly parent = this as any;
-
-    static toString() {
-      return `${type}(${id}${
-        props && typeof props === "object" && Object.keys(props).length > 0
-          ? `, ${Object.entries(props as any)
-              .map(([key, value]) => `${key}: ${inspect(value)}`)
-              .join(", ")}`
-          : ""
-      })`;
-    }
-    static [util.inspect.custom]() {
-      return this.toString();
-    }
-    static [Symbol.toStringTag]() {
-      return this.toString();
-    }
-  }
-
-  return cls;
-};

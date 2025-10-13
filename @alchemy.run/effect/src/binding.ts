@@ -50,13 +50,10 @@ export type BindingService<
   DetachReq = never,
 > = {
   attach: (
-    resource: R["attr"],
+    resource: R,
     to: Props,
   ) => Effect.Effect<Partial<Props> | void, never, AttachReq>;
-  detach?: (
-    resource: R["attr"],
-    from: Props,
-  ) => Effect.Effect<void, never, DetachReq>;
+  detach?: (resource: R, from: Props) => Effect.Effect<void, never, DetachReq>;
 };
 
 export type Bindings = ReturnType<typeof Bindings>;

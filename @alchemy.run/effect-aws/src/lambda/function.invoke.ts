@@ -7,19 +7,19 @@ import {
   type CapabilityType,
 } from "@alchemy.run/effect";
 import { FunctionClient } from "./function.client.ts";
-import type { Function } from "./function.ts";
+import { Function } from "./function.ts";
 
-export interface InvoleFunctionClass
+export interface InvokeFunctionClass
   extends CapabilityType<"AWS.Lambda.InvokeFunction", Function> {
   readonly type: InvokeFunction<Resource.Instance<this["Target"]>>;
 }
 export const InvokeFunction = Capability(
   "AWS.Lambda.InvokeFunction",
   Function,
-)<InvoleFunctionClass>();
+)<InvokeFunctionClass>();
 
 export interface InvokeFunction<Q>
-  extends Capability<"AWS.Lambda.InvokeFunction", Q, InvoleFunctionClass> {}
+  extends Capability<"AWS.Lambda.InvokeFunction", Q, InvokeFunctionClass> {}
 
 export const invoke = <F extends Function>(func: F, input: any) =>
   Effect.gen(function* () {

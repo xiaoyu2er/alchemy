@@ -38,7 +38,7 @@ export interface Function<svc = unknown, cap = unknown, props = unknown>
     this["capability"],
     this["props"]
   >;
-  readonly attr: FunctionAttr<this["props"]>;
+  readonly attr: FunctionAttr<Extract<this["props"], FunctionProps>>;
 }
 export const Function = Runtime(FunctionType)<Function>();
 
