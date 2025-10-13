@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 
 import * as Alchemy from "@alchemy.run/effect";
 import { Bindings } from "@alchemy.run/effect";
-import * as AWS from "@alchemy.run/effect-aws";
+import AWS from "@alchemy.run/effect-aws";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as AlchemyCLI from "@alchemy.run/effect-cli";
@@ -13,6 +13,21 @@ import * as AlchemyCLI from "@alchemy.run/effect-cli";
 import { Api, Messages } from "./src/index.ts";
 
 const src = join(import.meta.dirname, "src");
+
+const R = Alchemy.bind(
+  Lambda.Function,
+  Api,
+  Bindings(SQS.SendMessage(Messages)),
+  {
+    main: join(src, "api.ts"),
+    url: true,
+  },
+);
+
+const plan = Alchemy.plan({
+  phase: process.argv.includes("--destroy") ? "destroy" : "update",
+  resources: [R],
+});
 
 const stack = await Alchemy.plan({
   phase: process.argv.includes("--destroy") ? "destroy" : "update",
@@ -26,7 +41,7 @@ const stack = await Alchemy.plan({
   Alchemy.apply,
   Effect.catchTag("PlanRejected", () => Effect.void),
   Effect.provide(AlchemyCLI.layer),
-  Effect.provide(AWS.layer),
+  Effect.provide(AWS),
   Effect.provide(Alchemy.State.localFs),
   Effect.provide(Alchemy.dotAlchemy),
   Effect.provide(Alchemy.app({ name: "my-iae-app", stage: "dev" })),
@@ -38,6 +53,7 @@ const stack = await Alchemy.plan({
 if (stack) {
   const { api, messages } = stack;
   console.log(stack.api.functionUrl);
+  messages.queueUrl;
 }
 
 export default stack;

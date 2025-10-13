@@ -27,8 +27,7 @@ import { FunctionClient } from "./function.client.ts";
 import {
   Function,
   FunctionType,
-  type FunctionAttributes,
-  type FunctionClass,
+  type FunctionAttr,
   type FunctionProps,
 } from "./function.ts";
 
@@ -383,7 +382,7 @@ export const functionProvider = () =>
                     Effect.succeed(undefined),
                   ),
                 )) as any,
-            } satisfies FunctionAttributes<FunctionProps>;
+            } satisfies FunctionAttr<FunctionProps>;
           }
           return output;
         }),
@@ -451,7 +450,7 @@ export const functionProvider = () =>
             code: {
               hash,
             },
-          } satisfies FunctionAttributes<FunctionProps>;
+          } satisfies FunctionAttr<FunctionProps>;
         }),
         update: Effect.fn(function* ({
           id,
@@ -504,7 +503,7 @@ export const functionProvider = () =>
             code: {
               hash,
             },
-          } satisfies FunctionAttributes<FunctionProps>;
+          } satisfies FunctionAttr<FunctionProps>;
         }),
         delete: Effect.fn(function* ({ output }) {
           yield* iam
@@ -563,6 +562,6 @@ export const functionProvider = () =>
             .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
           return null as any;
         }),
-      } as any satisfies ProviderService<FunctionClass>;
+      } as any satisfies ProviderService<Function>;
     }),
   );

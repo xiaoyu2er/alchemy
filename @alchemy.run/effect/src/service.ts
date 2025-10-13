@@ -58,7 +58,7 @@ export const Service = <
     constructor(_: never) {}
   } as Service<ID, Handler, Cap>;
 
-  return Object.assign(svc, eff, {
-    pipe: eff.pipe.bind(svc),
-  });
+  const obj = Object.assign(svc, eff);
+  obj.pipe = eff.pipe.bind(svc);
+  return obj;
 };

@@ -5,7 +5,7 @@ import { isBound, type Bound } from "./bind.ts";
 import type { Capability, SerializedCapability } from "./capability.ts";
 import type { Phase } from "./phase.ts";
 import { Provider, type ProviderService } from "./provider.ts";
-import type { AnyResource, Resource, ResourceClass } from "./resource.ts";
+import type { Resource, ResourceClass } from "./resource.ts";
 import type { Runtime } from "./runtime.ts";
 import { State, type ResourceState } from "./state.ts";
 
@@ -179,13 +179,10 @@ type DerivePlan<
           [k in keyof ApplyAll<Resources>]: ApplyAll<Resources>[k];
         }
       | {
-          [k in Exclude<
-            string,
-            keyof ApplyAll<Resources>
-          >]: Delete<AnyResource>;
+          [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<Resource>;
         }
   : {
-      [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<AnyResource>;
+      [k in Exclude<string, keyof ApplyAll<Resources>>]: Delete<Resource>;
     };
 
 export type Plan = {

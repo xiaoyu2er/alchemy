@@ -36,3 +36,5 @@ export const layer = defaultProviders.pipe(
   Layer.provide(Region.fromEnv()),
   Layer.provide(Credentials.fromChain()),
 );
+
+export default layer;

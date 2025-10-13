@@ -12,7 +12,7 @@ import {
   type Delete,
   type Plan,
 } from "./plan.ts";
-import type { AnyResource } from "./resource.ts";
+import type { Resource } from "./resource.ts";
 import { State } from "./state.ts";
 
 export interface PlanStatusSession {
@@ -249,7 +249,7 @@ export const apply = <const P extends Plan, Err, Req>(
     ),
   ) as Effect.Effect<
     {
-      [id in keyof P]: P[id] extends Delete<AnyResource> | undefined | never
+      [id in keyof P]: P[id] extends Delete<Resource> | undefined | never
         ? never
         : Simplify<P[id]["resource"]["attr"]>;
     } extends infer O

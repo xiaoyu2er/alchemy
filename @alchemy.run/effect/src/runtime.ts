@@ -11,9 +11,10 @@ export interface RuntimeType<
   Svc = unknown,
   Cap = unknown,
   Props = unknown,
-> extends Resource<Type, string, Props> {
+> extends Resource<Type> {
   new (...args: any[]): {};
   type: Type;
+  props: Props;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
   svc: Svc;
   service: Extract<this["svc"], Service>;

@@ -1,4 +1,10 @@
-import { Binding, Capability, Runtime } from "@alchemy.run/effect";
+import {
+  Binding,
+  Capability,
+  Provider,
+  Runtime,
+  Service,
+} from "@alchemy.run/effect";
 
 export const FunctionType = "AWS.Lambda.Function";
 export type FunctionType = typeof FunctionType;
@@ -12,7 +18,7 @@ export type FunctionProps = {
   url?: boolean;
 };
 
-export type FunctionAttributes<Props extends FunctionProps = FunctionProps> = {
+export type FunctionAttr<Props extends FunctionProps = FunctionProps> = {
   functionArn: string;
   functionName: string;
   functionUrl: Props["url"] extends true ? string : undefined;
@@ -23,28 +29,26 @@ export type FunctionAttributes<Props extends FunctionProps = FunctionProps> = {
   };
 };
 
-export interface FunctionClass<
-  svc = unknown,
-  cap = unknown,
-  props extends FunctionProps = FunctionProps,
-  _Attr = unknown,
-> extends Runtime<FunctionType, svc, cap, props> {
-  readonly Binding: Function<this["capability"]>;
-  readonly Instance: FunctionClass<
+export interface Function<svc = unknown, cap = unknown, props = unknown>
+  extends Runtime<FunctionType, svc, cap> {
+  readonly Provider: FunctionProvider;
+  readonly Binding: FunctionBinding<this["capability"]>;
+  readonly Instance: Function<
     this["service"],
     this["capability"],
-    this["props"],
-    {
-      [a in keyof this["attr"]]: this["attr"][a];
-    }
+    this["props"]
   >;
-  readonly attr: FunctionAttributes<this["props"]>;
+  readonly attr: FunctionAttr<this["props"]>;
 }
-export const Function = Runtime(FunctionType)<FunctionClass>();
+export const Function = Runtime(FunctionType)<Function>();
 
-export interface Function<Cap extends Capability>
+export type FunctionProvider = Provider<
+  Function<Service, Capability, FunctionProps>
+>;
+
+export interface FunctionBinding<Cap extends Capability>
   extends Binding<
-    FunctionClass,
+    Function,
     Cap,
     {
       env: Record<string, string>;

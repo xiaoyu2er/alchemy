@@ -20,7 +20,7 @@ export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
 };
 
 // "Pull" function
-export function consume<Q extends Queue, ID extends string, Req>(
+export function consume<Q extends Queue, ID extends string, Req = never>(
   queue: Q,
   id: ID,
   handler: (

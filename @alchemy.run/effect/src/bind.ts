@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as util from "util";
 import { Capability } from "./capability.ts";
-import type { Kind } from "./hkt.ts";
 import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
 import type { Runtime } from "./runtime.ts";
@@ -50,8 +49,9 @@ export const bind = <
   };
 
   type Providers<Cap extends Capability> = Cap extends any
-    ? Runtime.Binding<Run, Kind<Cap["class"], Cap["resource"]["class"]>>
-    : never;
+    ? (Run & { cap: Cap; svc: Svc; props: Props })["Provider"] | never
+    : // ? Runtime.Binding<Run, Kind<Cap["class"], Cap["resource"]["class"]>>
+      never;
 
   return Effect.gen(function* () {
     const self = {

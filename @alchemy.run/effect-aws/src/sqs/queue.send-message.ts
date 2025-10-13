@@ -9,7 +9,7 @@ import {
 } from "@alchemy.run/effect";
 import { Function } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
-import { Queue, type QueueProps } from "./queue.ts";
+import { Queue } from "./queue.ts";
 
 // SendMessage (Binding)
 export interface SendMessageClass
@@ -23,7 +23,7 @@ export const SendMessage = Capability(
 export interface SendMessage<Q>
   extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
 
-export const sendMessage = <Q extends Queue<string, QueueProps>>(
+export const sendMessage = <Q extends Queue>(
   queue: Q,
   message: Q["props"]["schema"]["Type"],
 ) =>

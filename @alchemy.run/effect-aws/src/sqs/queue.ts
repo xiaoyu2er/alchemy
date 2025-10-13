@@ -70,17 +70,16 @@ export type QueueProps<Msg = any> = {
     }
 );
 
-export class Queue<
-  ID extends string = string,
-  Props extends QueueProps = QueueProps,
-> extends Resource(QueueType) {
-  declare attr: {
-    queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-  };
-  constructor(
-    readonly id: ID,
-    readonly props: Props,
-  ) {
-    super(id, props);
-  }
+export type QueueAttr<Props extends QueueProps> = {
+  /**
+   * URL of the queue.
+   */
+  queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
+};
+
+export interface Queue extends Resource<QueueType> {
+  props: QueueProps;
+  attr: QueueAttr<this["props"]>;
 }
+
+export const Queue = Resource(QueueType)<Queue>();

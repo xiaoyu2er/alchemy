@@ -31,90 +31,60 @@ export declare namespace Resource {
         : R;
 }
 
-export type AnyResource = Resource<any, any, any, any, any>;
-
-export interface Resource<
-  type extends ResourceType = ResourceType,
-  id extends ResourceID = ResourceID,
-  props = unknown,
-  attr = unknown,
-  parent = unknown,
-> {
+export interface Resource<type extends ResourceType = ResourceType> {
   kind: "Resource";
   type: type;
-  id: id;
-  props: props;
+  id: ResourceID;
+  props: unknown;
   /** @internal phantom type */
-  attr: attr;
-  parent: parent;
+  attr: unknown;
+  parent: unknown;
   // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
   capability?: unknown;
 }
 
-export const Resource = <const Type extends string>(type: Type) => {
-  interface R {
-    new (...args: any[]): unknown;
-  }
-  abstract class R {
-    static readonly kind = "ResourceClass";
-    static readonly type = type;
-    static readonly props = {} as unknown;
-    static readonly attr = {} as unknown;
-
-    readonly kind = "Resource";
-    readonly type = type;
-    readonly parent = this.constructor;
-    abstract readonly attr: {
-      [key: string]: any;
-    };
-    readonly class: typeof R = R;
-    static get parent() {
-      return this;
-    }
-
-    constructor(
-      readonly id: string,
-      readonly props: any,
-    ) {
-      return class extends (this as any) {} as any;
-    }
-
-    static create<
-      Self extends new (
-        ...args: any[]
-      ) => any,
-      const ID extends string,
-      const Props extends any,
-    >(
-      this: Self,
+export const Resource =
+  <const Type extends string>(type: Type) =>
+  <Self extends Resource<Type>>() => {
+    const fac = <const ID extends string, const Props extends Self["props"]>(
       id: ID,
       props: Props,
-    ): {
-      readonly class: Self;
-      readonly kind: "Resource";
-      readonly type: Type;
-      readonly id: ID;
-      readonly props: Props;
-      readonly attr: any;
-      readonly parent: Self;
-
-      new (
-        ...args: any[]
-      ): {
-        readonly kind: "Resource";
-        readonly type: Type;
-        readonly id: ID;
-        readonly props: Props;
-        readonly attr: any;
-        readonly parent: InstanceType<Self>;
-        class: Self;
+    ) => {
+      type Attr = (Self & {
+        props: Props;
+      })["attr"];
+      type ResourceClass = {
+        kind: "Resource";
+        type: Type;
+        id: ID;
+        props: Props;
+        attr: {
+          [k in keyof Attr]: Attr[k];
+        };
+        parent: Self;
+        new (
+          _: never,
+        ): Self & {
+          id: ID;
+          props: Props;
+        };
       };
-    } {
-      return createClass(type, id, props, R);
-    }
-  }
-  return R;
-};
+      class Resource {}
+      return Object.assign(Resource, {
+        kind: "Resource",
+        type,
+        id,
+        props,
+        attr: undefined!,
+        parent: Resource!,
+      }) as unknown as ResourceClass;
+    };
+
+    return fac as typeof fac & {
+      // added purely for syntax highlighting (resources highlighted as types/classes)
+      new (_: never): {};
+    };
+  };
 
 const createClass = <
   Type extends string,

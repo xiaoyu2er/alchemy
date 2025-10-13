@@ -4,13 +4,13 @@ import * as Effect from "effect/Effect";
 import * as S from "effect/Schema";
 
 // schema
-export const Message = S.Struct({
+export class Message extends S.Struct({
   id: S.Int,
   value: S.String,
-});
+}) {}
 
 // resource declaration
-export class Messages extends SQS.Queue.create("messages", {
+export class Messages extends SQS.Queue("messages", {
   fifo: true,
   schema: Message,
 }) {}
