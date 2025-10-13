@@ -15,9 +15,10 @@ import {
 import { DEFAULT_STAGE, Scope, type ProviderCredentials } from "./scope.ts";
 import { secret } from "./secret.ts";
 import type { StateStoreType } from "./state.ts";
+import { cliArgs, parseOption } from "./util/cli-args.ts";
 import type { LoggerApi } from "./util/cli.ts";
 import { ALCHEMY_ROOT } from "./util/root-dir.ts";
-import { TelemetryClient } from "./util/telemetry/client.ts";
+import { createAndSendEvent } from "./util/telemetry.ts";
 
 /**
  * Type alias for semantic highlighting of `alchemy` as a type keyword
@@ -102,18 +103,17 @@ async function _alchemy(
   appName: string,
   options?: Omit<AlchemyOptions, "appName">,
 ): Promise<Scope> {
-  const cliArgs = process.argv.slice(2);
+  const startedAt = performance.now();
+  let firstAnalyticsPromise: Promise<void> | undefined;
+  if (!options?.noTrack) {
+    firstAnalyticsPromise = createAndSendEvent({
+      event: "alchemy.start",
+      duration: performance.now() - startedAt,
+    });
+  }
   // user may select a specific app to auto-enable read mode for any other app
   const app = parseOption("--app");
-  function parseOption<D extends string | undefined>(
-    option: string,
-    defaultValue?: D,
-  ): D {
-    const i = cliArgs.indexOf(option);
-    return (
-      i !== -1 && i + 1 < cliArgs.length ? cliArgs[i + 1] : defaultValue
-    ) as D;
-  }
+
   const cliOptions = {
     phase:
       app && app !== appName
@@ -138,6 +138,7 @@ async function _alchemy(
     password: process.env.ALCHEMY_PASSWORD,
     adopt: cliArgs.includes("--adopt"),
     rootDir: path.resolve(parseOption("--root-dir", ALCHEMY_ROOT)),
+    profile: parseOption("--profile"),
   } satisfies Partial<AlchemyOptions>;
   const mergedOptions = {
     ...cliOptions,
@@ -162,21 +163,15 @@ If this is a mistake, you can disable this check by setting the ALCHEMY_CI_STATE
   }
 
   const phase = mergedOptions?.phase ?? "up";
-  const telemetryClient =
-    mergedOptions?.parent?.telemetryClient ??
-    TelemetryClient.create({
-      phase,
-      enabled: mergedOptions?.telemetry ?? true,
-      quiet: mergedOptions?.quiet ?? false,
-    });
   const root = new Scope({
     ...mergedOptions,
     parent: undefined,
     scopeName: appName,
     phase,
     password: mergedOptions?.password ?? process.env.ALCHEMY_PASSWORD,
-    telemetryClient,
+    noTrack: mergedOptions?.noTrack ?? false,
     isSelected: app === undefined ? undefined : app === appName,
+    startedAt,
   });
   onExit((code) => {
     root.cleanup().then(() => {
@@ -195,8 +190,20 @@ If this is a mistake, you can disable this check by setting the ALCHEMY_CI_STATE
   Scope.storage.enterWith(root);
   Scope.storage.enterWith(stage);
   if (mergedOptions?.phase === "destroy") {
-    await destroy(stage);
+    const err = await destroy(stage).catch((e) => e);
+    if (!options?.noTrack) {
+      await createAndSendEvent(
+        {
+          event: err instanceof Error ? "alchemy.error" : "alchemy.success",
+          duration: performance.now() - root.startedAt,
+        },
+        err instanceof Error ? err : undefined,
+      );
+    }
     return process.exit(0);
+  }
+  if (firstAnalyticsPromise) {
+    await firstAnalyticsPromise;
   }
   return root;
 }
@@ -280,12 +287,12 @@ export interface AlchemyOptions {
    */
   password?: string;
   /**
-   * Whether to send anonymous telemetry data to the Alchemy team.
+   * Whether to stop sending anonymous telemetry data to the Alchemy team.
    * You can also opt out by setting the `DO_NOT_TRACK` or `ALCHEMY_TELEMETRY_DISABLED` environment variables to a truthy value.
    *
-   * @default true
+   * @default false
    */
-  telemetry?: boolean;
+  noTrack?: boolean;
   /**
    * A custom logger instance to use for this scope.
    * If not provided, the default fallback logger will be used.
@@ -303,6 +310,10 @@ export interface AlchemyOptions {
    * @default process.cwd()
    */
   rootDir?: string;
+  /**
+   * The Alchemy profile to use for authoriziing requests.
+   */
+  profile?: string;
   /**
    * Whether this is the application that was selected with `--app`
    *
@@ -353,18 +364,11 @@ async function run<T>(
           RunOptions,
           (this: Scope, scope: Scope) => Promise<T>,
         ]);
-  const telemetryClient =
-    options?.parent?.telemetryClient ??
-    TelemetryClient.create({
-      phase: options?.phase ?? "up",
-      enabled: options?.telemetry ?? true,
-      quiet: options?.quiet ?? false,
-    });
   const _scope = new Scope({
     ...options,
     parent: options?.parent,
     scopeName: id,
-    telemetryClient,
+    noTrack: options?.noTrack ?? false,
   });
   let noop = options?.noop ?? false;
   try {

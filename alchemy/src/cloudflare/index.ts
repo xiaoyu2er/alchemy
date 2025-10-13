@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 export * from "./account-api-token.ts";
 export * from "./account-id.ts";
 export * from "./ai-gateway.ts";
@@ -15,6 +17,7 @@ export * from "./bound.ts";
 export * from "./browser-rendering.ts";
 export * from "./bucket-object.ts";
 export * from "./bucket.ts";
+export * from "./bun-spa/bun-spa.ts";
 export * from "./certificate-pack.ts";
 export * from "./cloudflare-env-proxy.ts";
 export * from "./compatibility-date.gen.ts";
@@ -31,10 +34,12 @@ export * from "./email-address.ts";
 export * from "./email-catch-all.ts";
 export * from "./email-routing.ts";
 export * from "./email-rule.ts";
+export * from "./health-check.ts";
 export * from "./hyperdrive-ref.ts";
 export * from "./hyperdrive.ts";
 export * from "./images.ts";
 export * from "./kv-namespace.ts";
+export * from "./logpush-job.ts";
 export * from "./next.ts";
 export * from "./nuxt/nuxt.ts";
 export * from "./orange.ts";
@@ -63,6 +68,7 @@ export * from "./vectorize-metadata-index.ts";
 export * from "./version-metadata.ts";
 export * from "./vite/vite.ts";
 export * from "./website.ts";
+export { WorkerLoader } from "./worker-loader.ts";
 export * from "./worker-ref.ts";
 export * from "./worker-stub.ts";
 export * from "./worker-subdomain.ts";

@@ -1,6 +1,6 @@
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { loadConfig } from "@smithy/node-config-provider";
-import { type Provider } from "@smithy/types";
+import type { Provider } from "@smithy/types";
 import { AwsClient } from "aws4fetch";
 import { flattenParams } from "../util/params.ts";
 

@@ -12,7 +12,13 @@ import * as fs from "fs-extra";
 import { parse as parseJsonc } from "jsonc-parse";
 import { dirname, relative, resolve } from "node:path";
 import pc from "picocolors";
-import { IndentationText, Node, Project, QuoteKind } from "ts-morph";
+import {
+  IndentationText,
+  Node,
+  Project,
+  QuoteKind,
+  type CallExpression,
+} from "ts-morph";
 import z from "zod";
 import { detectPackageManager } from "../../src/util/detect-package-manager.ts";
 import type { DependencyVersionMap } from "../constants.ts";
@@ -249,7 +255,6 @@ import { Worker } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Worker("worker", {
-  name: \`\${app.name}-\${app.stage}\`,
   entrypoint: "src/worker.ts",
 });
 
@@ -263,7 +268,6 @@ import { Vite } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Vite("${context.projectName}", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -287,7 +291,6 @@ import { Astro } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Astro("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -310,7 +313,6 @@ import { ReactRouter } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await ReactRouter("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "build/server/index.js",
@@ -334,7 +336,6 @@ import { SvelteKit } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await SvelteKit("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -357,7 +358,6 @@ import { TanStackStart } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await TanStackStart("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -380,12 +380,10 @@ import { D1Database, DurableObjectNamespace, Redwood } from "alchemy/cloudflare"
 const app = await alchemy("${context.projectName}");
 
 const database = await D1Database("database", {
-  name: \`\${app.name}-\${app.stage}-db\`,
   migrationsDir: "migrations",
 });
 
 export const worker = await Redwood("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   bindings: {
     AUTH_SECRET_KEY: alchemy.secret(process.env.AUTH_SECRET_KEY),
     DB: database,
@@ -415,7 +413,6 @@ import { Nextjs } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const website = await Nextjs("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
 });
 
 console.log({
@@ -433,7 +430,6 @@ import { Nuxt } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const website = await Nuxt("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -1283,14 +1279,40 @@ async function updateTanStackViteConfig(context: InitContext): Promise<void> {
     const exportAssignment = sourceFile.getExportAssignment(
       (d) => !d.isExportEquals(),
     );
-    if (!exportAssignment) return;
+    if (!exportAssignment) {
+      throw new Error("vite.config.ts does not contain a default export");
+    }
 
-    const defineConfigCall = exportAssignment.getExpression();
+    let defineConfigCall: CallExpression | undefined;
+    const exportExpression = exportAssignment.getExpression();
+
+    // Check if it's a direct defineConfig call
     if (
-      !Node.isCallExpression(defineConfigCall) ||
-      defineConfigCall.getExpression().getText() !== "defineConfig"
-    )
-      return;
+      Node.isCallExpression(exportExpression) &&
+      exportExpression.getExpression().getText() === "defineConfig"
+    ) {
+      defineConfigCall = exportExpression;
+    }
+    // Check if it's an alias (identifier) that references a defineConfig call
+    else if (Node.isIdentifier(exportExpression)) {
+      const variableName = exportExpression.getText();
+      const variableDeclaration =
+        sourceFile.getVariableDeclaration(variableName);
+
+      if (variableDeclaration) {
+        const initializer = variableDeclaration.getInitializer();
+        if (
+          Node.isCallExpression(initializer) &&
+          initializer.getExpression().getText() === "defineConfig"
+        ) {
+          defineConfigCall = initializer;
+        }
+      }
+    }
+
+    if (!defineConfigCall) {
+      throw new Error("vite.config.ts does not contain a defineConfig call");
+    }
 
     let configObject = defineConfigCall.getArguments()[0];
     if (!configObject) {
@@ -1298,62 +1320,16 @@ async function updateTanStackViteConfig(context: InitContext): Promise<void> {
     }
 
     if (Node.isObjectLiteralExpression(configObject)) {
-      // Add build configuration
-      if (!configObject.getProperty("build")) {
-        configObject.addPropertyAssignment({
-          name: "build",
-          initializer: `{
-    target: "esnext",
-    rollupOptions: {
-      external: ["node:async_hooks", "cloudflare:workers"],
-    },
-  }`,
-        });
-      }
-
       const pluginsProperty = configObject.getProperty("plugins");
       if (pluginsProperty && Node.isPropertyAssignment(pluginsProperty)) {
         const initializer = pluginsProperty.getInitializer();
         if (Node.isArrayLiteralExpression(initializer)) {
-          const hasShim = initializer
+          const hasAlchemyPlugin = initializer
             .getElements()
             .some((el) => el.getText().includes("alchemy"));
-          if (!hasShim) {
+          if (!hasAlchemyPlugin) {
             initializer.addElement("alchemy()");
           }
-
-          const tanstackElements = initializer
-            .getElements()
-            .filter((el) => el.getText().includes("tanstackStart"));
-
-          tanstackElements.forEach((element) => {
-            if (Node.isCallExpression(element)) {
-              const args = element.getArguments();
-              if (args.length === 0) {
-                element.addArgument(`{
-      target: "cloudflare-module",
-      customViteReactPlugin: true,
-    }`);
-              } else if (
-                args.length === 1 &&
-                Node.isObjectLiteralExpression(args[0])
-              ) {
-                const configObj = args[0];
-                if (!configObj.getProperty("target")) {
-                  configObj.addPropertyAssignment({
-                    name: "target",
-                    initializer: '"cloudflare-module"',
-                  });
-                }
-                if (!configObj.getProperty("customViteReactPlugin")) {
-                  configObj.addPropertyAssignment({
-                    name: "customViteReactPlugin",
-                    initializer: "true",
-                  });
-                }
-              }
-            }
-          });
         }
       }
     }

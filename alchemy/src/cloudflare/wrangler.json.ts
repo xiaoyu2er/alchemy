@@ -11,7 +11,8 @@ import type { DurableObjectNamespace } from "./durable-object-namespace.ts";
 import type { EventSource } from "./event-source.ts";
 import { isQueueEventSource } from "./event-source.ts";
 import { isQueue } from "./queue.ts";
-import type { Worker, WorkerProps } from "./worker.ts";
+import { unencryptSecrets } from "./util/filter-env-bindings.ts";
+import { isWorker, type Worker, type WorkerProps } from "./worker.ts";
 
 type WranglerJsonRateLimit = Omit<WorkerBindingRateLimit, "type"> & {
   type: "rate_limit";
@@ -162,6 +163,7 @@ export async function WranglerJson(
       : undefined,
     placement: worker.placement,
     limits: worker.limits,
+    logpush: worker.logpush,
   };
 
   // Process bindings if they exist
@@ -180,6 +182,15 @@ export async function WranglerJson(
   // Add environment variables as vars
   if (worker.env) {
     spec.vars = { ...worker.env };
+  }
+
+  if (worker.tailConsumers && worker.tailConsumers.length > 0) {
+    spec.tail_consumers = worker.tailConsumers.map((consumer) => {
+      if (isWorker(consumer)) {
+        return { service: consumer.name };
+      }
+      return { service: consumer.service };
+    });
   }
 
   if (worker.crons && worker.crons.length > 0) {
@@ -201,14 +212,7 @@ export async function WranglerJson(
     // but do not modify `finalSpec` so that way secrets aren't written to state unencrypted.
     const withSecretsUnwrapped = {
       ...finalSpec,
-      vars: {
-        ...finalSpec.vars,
-        ...Object.fromEntries(
-          Object.entries(finalSpec.vars ?? {}).map(([key, value]) =>
-            isSecret(value) ? [key, value.unencrypted] : [key, value],
-          ),
-        ),
-      },
+      vars: unencryptSecrets(finalSpec.vars ?? {}),
     };
     await writeJSON(filePath, withSecretsUnwrapped);
   } else {
@@ -267,6 +271,15 @@ export interface WranglerJsonSpec {
   };
 
   /**
+   * Send Trace Events from this Worker to Workers Logpush.
+   *
+   * This will not configure a corresponding Logpush job automatically.
+   *
+   * @default false
+   */
+  logpush?: boolean;
+
+  /**
    * Whether to enable a workers.dev URL for this worker
    */
   workers_dev?: boolean;
@@ -288,7 +301,7 @@ export interface WranglerJsonSpec {
    */
   ai?: {
     binding: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   };
 
   /**
@@ -296,7 +309,7 @@ export interface WranglerJsonSpec {
    */
   browser?: {
     binding: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   };
 
   /**
@@ -304,7 +317,7 @@ export interface WranglerJsonSpec {
    */
   images?: {
     binding: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   };
 
   /**
@@ -317,7 +330,7 @@ export interface WranglerJsonSpec {
      * The ID of the KV namespace used during `wrangler dev`
      */
     preview_id?: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[];
 
   /**
@@ -342,7 +355,7 @@ export interface WranglerJsonSpec {
      * The preview name of this R2 bucket at the edge.
      */
     preview_bucket_name?: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[];
 
   /**
@@ -363,6 +376,10 @@ export interface WranglerJsonSpec {
     entrypoint?: string;
   }[];
 
+  worker_loaders?: {
+    binding: string;
+  }[];
+
   /**
    * Workflow bindings
    */
@@ -379,7 +396,7 @@ export interface WranglerJsonSpec {
   vectorize?: {
     binding: string;
     index_name: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[];
 
   /**
@@ -399,7 +416,7 @@ export interface WranglerJsonSpec {
      * The ID of the D1 database used during `wrangler dev`
      */
     preview_database_id?: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[];
 
   /**
@@ -482,8 +499,13 @@ export interface WranglerJsonSpec {
   dispatch_namespaces?: {
     binding: string;
     namespace: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[];
+
+  /**
+   * Tail consumers that will receive execution logs from this worker
+   */
+  tail_consumers?: Array<{ service: string }>;
 
   /**
    * Unsafe bindings section for experimental features
@@ -537,7 +559,7 @@ function processBindings(
     binding: string;
     id: string;
     preview_id: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[] = [];
   const durableObjects: {
     name: string;
@@ -570,7 +592,7 @@ function processBindings(
     database_name: string;
     migrations_dir?: string;
     preview_database_id: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[] = [];
   const queues: {
     producers: { queue: string; binding: string }[];
@@ -586,7 +608,7 @@ function processBindings(
   const vectorizeIndexes: {
     binding: string;
     index_name: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[] = [];
   const analyticsEngineDatasets: { binding: string; dataset: string }[] = [];
   const hyperdrive: {
@@ -603,11 +625,14 @@ function processBindings(
   const dispatchNamespaces: {
     binding: string;
     namespace: string;
-    experimental_remote?: boolean;
+    remote?: boolean;
   }[] = [];
   const unsafeBindings: WranglerJsonRateLimit[] = [];
   const containers: {
     class_name: string;
+  }[] = [];
+  const workerLoaders: {
+    binding: string;
   }[] = [];
 
   for (const eventSource of eventSources ?? []) {
@@ -668,9 +693,7 @@ function processBindings(
         binding: bindingName,
         id: id,
         preview_id: id,
-        ...("dev" in binding && binding.dev?.remote
-          ? { experimental_remote: true }
-          : {}),
+        ...("dev" in binding && binding.dev?.remote ? { remote: true } : {}),
       });
     } else if (
       typeof binding === "object" &&
@@ -700,7 +723,7 @@ function processBindings(
         preview_bucket_name: name,
         jurisdiction:
           binding.jurisdiction === "default" ? undefined : binding.jurisdiction,
-        ...(binding.dev?.remote ? { experimental_remote: true } : {}),
+        ...(binding.dev?.remote ? { remote: true } : {}),
       });
     } else if (binding.type === "secret") {
       // Secret binding
@@ -728,7 +751,7 @@ function processBindings(
         database_name: binding.name,
         migrations_dir: binding.migrationsDir,
         preview_database_id: id,
-        ...(binding.dev?.remote ? { experimental_remote: true } : {}),
+        ...(binding.dev?.remote ? { remote: true } : {}),
       });
     } else if (binding.type === "queue") {
       const id =
@@ -744,7 +767,7 @@ function processBindings(
         binding: bindingName,
         index_name: binding.name,
         // https://developers.cloudflare.com/workers/development-testing/#recommended-remote-bindings
-        experimental_remote: true,
+        remote: true,
       });
     } else if (binding.type === "browser") {
       if (spec.browser) {
@@ -753,7 +776,7 @@ function processBindings(
       spec.browser = {
         binding: bindingName,
         // https://developers.cloudflare.com/workers/development-testing/#recommended-remote-bindings
-        experimental_remote: true,
+        remote: true,
       };
     } else if (binding.type === "ai") {
       if (spec.ai) {
@@ -762,7 +785,7 @@ function processBindings(
       spec.ai = {
         binding: bindingName,
         // https://developers.cloudflare.com/workers/development-testing/#recommended-remote-bindings
-        experimental_remote: true,
+        remote: true,
       };
     } else if (binding.type === "images") {
       if (spec.images) {
@@ -771,7 +794,7 @@ function processBindings(
       spec.images = {
         binding: bindingName,
         // https://developers.cloudflare.com/workers/development-testing/#recommended-remote-bindings
-        experimental_remote: true,
+        remote: true,
       };
     } else if (binding.type === "analytics_engine") {
       analyticsEngineDatasets.push({
@@ -812,7 +835,7 @@ function processBindings(
       dispatchNamespaces.push({
         binding: bindingName,
         namespace: binding.namespaceName,
-        experimental_remote: true,
+        remote: true,
       });
     } else if (binding.type === "ratelimit") {
       unsafeBindings.push({
@@ -831,6 +854,10 @@ function processBindings(
       });
       containers.push({
         class_name: binding.className,
+      });
+    } else if (binding.type === "worker_loader") {
+      workerLoaders.push({
+        binding: bindingName,
       });
     } else {
       console.log("binding", binding);
@@ -911,5 +938,9 @@ function processBindings(
     spec.unsafe = {
       bindings: unsafeBindings,
     };
+  }
+
+  if (workerLoaders.length > 0) {
+    spec.worker_loaders = workerLoaders;
   }
 }

@@ -2,22 +2,17 @@
 
 import alchemy from "alchemy";
 import {
+  Assets,
   D1Database,
   DurableObjectNamespace,
   KVNamespace,
   R2Bucket,
   Worker,
 } from "alchemy/cloudflare";
-import { CloudflareStateStore } from "alchemy/state";
 import assert from "node:assert";
 import type { DO } from "./src/worker1.ts";
 
-const app = await alchemy("cloudflare-worker-simple", {
-  stateStore: (scope) =>
-    new CloudflareStateStore(scope, {
-      forceUpdate: true,
-    }),
-});
+const app = await alchemy("cloudflare-worker-simple");
 
 const [d1, kv, r2] = await Promise.all([
   D1Database("d1", {
@@ -50,6 +45,9 @@ export const worker1 = await Worker("worker1", {
     D1: d1,
     R2: r2,
     DO: doNamespace,
+    ASSETS: await Assets({
+      path: "./assets",
+    }),
   },
   compatibilityFlags: ["nodejs_compat"],
 });

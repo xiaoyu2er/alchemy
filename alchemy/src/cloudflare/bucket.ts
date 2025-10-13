@@ -1,3 +1,4 @@
+import type { R2PutOptions } from "@cloudflare/workers-types/experimental/index.ts";
 import * as mf from "miniflare";
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "../context.ts";
@@ -253,6 +254,7 @@ export type R2ObjectMetadata = {
   etag: string;
   uploaded: Date;
   size: number;
+  httpMetadata?: R2HTTPMetadata;
 };
 
 export type R2ObjectContent = R2ObjectMetadata & {
@@ -272,7 +274,7 @@ export type PutR2ObjectResponse = {
 };
 
 export type R2Objects = {
-  objects: R2ObjectMetadata[];
+  objects: Omit<R2ObjectMetadata, "httpMetadata">[];
 } & (
   | {
       truncated: true;
@@ -296,6 +298,7 @@ export type R2Bucket = _R2Bucket & {
       | string
       | null
       | Blob,
+    options?: Pick<R2PutOptions, "httpMetadata">,
   ): Promise<PutR2ObjectResponse>;
   delete(key: string): Promise<Response>;
   list(options?: R2ListOptions): Promise<R2Objects>;
@@ -344,6 +347,13 @@ type _R2Bucket = Omit<BucketProps, "delete" | "dev"> & {
      * Whether the bucket is running remotely
      */
     remote: boolean;
+
+    /**
+     * Whether the bucket has been deployed
+     *
+     * @internal
+     */
+    isDeployed?: boolean;
   };
 
   /**
@@ -449,7 +459,17 @@ export async function R2Bucket(
     ...bucket,
     head: async (key: string) => {
       if (isLocal) {
-        return (await localBucket()).head(key);
+        const result = await (await localBucket()).head(key);
+        if (result) {
+          return {
+            key: result.key,
+            etag: result.etag,
+            uploaded: result.uploaded,
+            size: result.size,
+            httpMetadata: result.httpMetadata,
+          } as R2ObjectMetadata;
+        }
+        return null;
       }
       return headObject(api, {
         bucketName: bucket.name,
@@ -489,9 +509,9 @@ export async function R2Bucket(
     put: async (
       key: string,
       value: PutObjectObject,
+      options?: Pick<R2PutOptions, "httpMetadata">,
     ): Promise<PutR2ObjectResponse> => {
       if (isLocal) {
-        // @ts-expect-error - node built-ins vs cloudflare built-ins
         return await (await localBucket()).put(
           key,
           typeof value === "string"
@@ -505,12 +525,14 @@ export async function R2Bucket(
                 : value instanceof ReadableStream
                   ? new Uint8Array(await streamToBuffer(value))
                   : value,
+          options,
         );
       }
       const response = await putObject(api, {
         bucketName: bucket.name,
         key: key,
         object: value,
+        options: options,
       });
       const body = (await response.json()) as {
         result: {
@@ -546,6 +568,7 @@ const parseR2Object = (key: string, response: Response): R2ObjectContent => ({
   uploaded: parseDate(response.headers),
   key,
   size: Number(response.headers.get("Content-Length")),
+  httpMetadata: mapHeadersToHttpMetadata(response.headers),
   arrayBuffer: () => response.arrayBuffer(),
   bytes: () => response.bytes(),
   text: () => response.text(),
@@ -571,15 +594,17 @@ const _R2Bucket = Resource(
     }
 
     const allowPublicAccess = props.allowPublicAccess === true;
+    const isLocal = this.scope.local && !props.dev?.remote;
     const dev = {
       id: this.output?.dev?.id ?? bucketName,
       remote: props.dev?.remote ?? false,
-    };
+      isDeployed: this.output?.dev?.isDeployed || !isLocal,
+    } satisfies _R2Bucket["dev"];
     const adopt = props.adopt ?? this.scope.adopt;
 
-    if (this.scope.local && !props.dev?.remote) {
+    if (isLocal) {
       return {
-        name: this.output?.name ?? "",
+        name: bucketName,
         location: this.output?.location ?? "",
         creationDate: this.output?.creationDate ?? new Date(),
         jurisdiction: this.output?.jurisdiction ?? "default",
@@ -610,7 +635,7 @@ const _R2Bucket = Resource(
       return this.destroy();
     }
 
-    if (this.phase === "create" || !this.output?.name) {
+    if (this.phase === "create" || !this.output?.dev?.isDeployed) {
       const bucket = await createBucket(api, bucketName, props).catch(
         async (err) => {
           if (
@@ -1155,6 +1180,7 @@ export async function headObject(
     etag: response.headers.get("ETag")?.replace(/"/g, "")!,
     uploaded: parseDate(response.headers),
     size: Number(response.headers.get("Content-Length")),
+    httpMetadata: mapHeadersToHttpMetadata(response.headers),
   };
 }
 
@@ -1192,27 +1218,76 @@ export type PutObjectObject =
   | Buffer
   | Blob;
 
+function mapHttpMetadataToHeaders(
+  httpMetadata: R2PutOptions["httpMetadata"],
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  if (httpMetadata instanceof Headers) {
+    httpMetadata.forEach((value, key) => {
+      headers[key] = value;
+    });
+  } else {
+    const {
+      contentType,
+      contentLanguage,
+      contentDisposition,
+      contentEncoding,
+      cacheControl,
+      cacheExpiry,
+    } = httpMetadata as R2HTTPMetadata;
+    if (contentType) headers["Content-Type"] = contentType;
+    if (contentLanguage) headers["Content-Language"] = contentLanguage;
+    if (contentDisposition) headers["Content-Disposition"] = contentDisposition;
+    if (contentEncoding) headers["Content-Encoding"] = contentEncoding;
+    if (cacheControl) headers["Cache-Control"] = cacheControl;
+    if (cacheExpiry) headers.Expires = cacheExpiry.toUTCString();
+  }
+
+  return headers;
+}
+
+function mapHeadersToHttpMetadata(headers: Headers): R2HTTPMetadata {
+  return {
+    contentType: headers.get("Content-Type") ?? undefined,
+    contentLanguage: headers.get("Content-Language") ?? undefined,
+    contentDisposition: headers.get("Content-Disposition") ?? undefined,
+    contentEncoding: headers.get("Content-Encoding") ?? undefined,
+    cacheControl: headers.get("Cache-Control") ?? undefined,
+    cacheExpiry: headers.get("Expires")
+      ? new Date(headers.get("Expires")!)
+      : undefined,
+  };
+}
+
 export async function putObject(
   api: CloudflareApi,
   {
     bucketName,
     key,
     object,
+    options,
   }: {
     bucketName: string;
     key: string;
     object: PutObjectObject;
+    options?: Pick<R2PutOptions, "httpMetadata">;
   },
 ): Promise<Response> {
   // Using withExponentialBackoff for reliability
   return await withRetries(async () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/octet-stream",
+      ...(options?.httpMetadata
+        ? mapHttpMetadataToHeaders(options?.httpMetadata)
+        : {}),
+    };
+
     const response = await api.put(
       `/accounts/${api.accountId}/r2/buckets/${bucketName}/objects/${key}`,
       object,
       {
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
+        headers,
       },
     );
     if (!response.ok) {
