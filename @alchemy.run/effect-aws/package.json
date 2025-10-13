@@ -52,7 +52,8 @@
   "peerDependencies": {
     "@alchemy.run/effect": "workspace:*",
     "@effect/platform-node": "*",
-    "@effect/platform": "*"
+    "@effect/platform": "*",
+    "effect": "*"
   },
   "dependencies": {
     "@aws-sdk/credential-providers": "^3.0.0",
@@ -69,8 +70,8 @@
   },
   "devDependencies": {
     "@clack/prompts": "^0.11.0",
-    "@effect/platform-node": "^0.97.1",
-    "@effect/platform": "^0.91.1",
+    "@effect/platform-node": "catalog:",
+    "@effect/platform": "catalog:",
     "@types/bun": "latest",
     "@types/node": "latest",
     "ink": "^6.3.1"

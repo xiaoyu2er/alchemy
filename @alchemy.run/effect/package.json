@@ -23,16 +23,24 @@
       "types": "./src/index.d.ts"
     }
   },
-  "peerDependencies": {
-    "@effect/platform": "*"
-  },
-  "dependencies": {
-    "effect": "^3.17.14"
-  },
   "devDependencies": {
-    "@effect/platform-node": "^0.97.1",
-    "@effect/platform": "^0.91.1",
+    "@effect/platform-node": "catalog:",
+    "@effect/platform": "catalog:",
     "@types/bun": "latest",
-    "@types/node": "latest"
+    "@types/node": "latest",
+    "effect": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "*",
+    "@effect/platform-node": "*",
+    "effect": "*"
+  },
+  "peerDependenciesMeta": {
+    "@effect/platform": {
+      "optional": true
+    },
+    "@effect/platform-node": {
+      "optional": true
+    }
   }
 }

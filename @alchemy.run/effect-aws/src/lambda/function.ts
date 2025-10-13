@@ -23,14 +23,14 @@ export type FunctionAttributes<Props extends FunctionProps = FunctionProps> = {
   };
 };
 
-export interface Function<
+export interface FunctionClass<
   svc = unknown,
   cap = unknown,
   props extends FunctionProps = FunctionProps,
   _Attr = unknown,
 > extends Runtime<FunctionType, svc, cap, props> {
-  readonly Binding: Lambda<this["capability"]>;
-  readonly Instance: Function<
+  readonly Binding: Function<this["capability"]>;
+  readonly Instance: FunctionClass<
     this["service"],
     this["capability"],
     this["props"],
@@ -40,11 +40,11 @@ export interface Function<
   >;
   readonly attr: FunctionAttributes<this["props"]>;
 }
-export const Lambda = Runtime(FunctionType)<Function>();
+export const Function = Runtime(FunctionType)<FunctionClass>();
 
-export interface Lambda<Cap extends Capability>
+export interface Function<Cap extends Capability>
   extends Binding<
-    Function,
+    FunctionClass,
     Cap,
     {
       env: Record<string, string>;

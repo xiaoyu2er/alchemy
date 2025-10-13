@@ -7,7 +7,7 @@ import {
   type CapabilityType,
   type Resource,
 } from "@alchemy.run/effect";
-import { Lambda } from "../lambda/index.ts";
+import { Function } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
 import { Queue, type QueueProps } from "./queue.ts";
 
@@ -40,7 +40,7 @@ export const sendMessage = <Q extends Queue<string, QueueProps>>(
   });
 
 export const sendMessageFromLambdaFunction = () =>
-  Layer.succeed(Lambda(SendMessage(Queue)), {
+  Layer.succeed(Function(SendMessage(Queue)), {
     attach: Effect.fn(function* ({ resource: queue, binding }) {
       return {
         env: {

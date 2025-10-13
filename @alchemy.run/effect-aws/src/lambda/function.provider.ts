@@ -25,16 +25,16 @@ import { Region } from "../region.ts";
 import { zipCode } from "../zip.ts";
 import { FunctionClient } from "./function.client.ts";
 import {
+  Function,
   FunctionType,
-  Lambda,
-  type Function,
   type FunctionAttributes,
+  type FunctionClass,
   type FunctionProps,
 } from "./function.ts";
 
 export const functionProvider = () =>
   Layer.effect(
-    Provider(Lambda),
+    Provider(Function),
     Effect.gen(function* () {
       const lambda = yield* FunctionClient;
       const iam = yield* IAM.IAMClient;
@@ -71,7 +71,7 @@ export const functionProvider = () =>
 
         for (const binding of bindings) {
           if (binding.action === "attach") {
-            const binder = yield* Lambda(
+            const binder = yield* Function(
               binding.capability,
               // erase the Lambda(Capability) requirement
               // TODO(sam): move bindings into the core engine instead of replicating them here
@@ -563,6 +563,6 @@ export const functionProvider = () =>
             .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
           return null as any;
         }),
-      } as any satisfies ProviderService<Function>;
+      } as any satisfies ProviderService<FunctionClass>;
     }),
   );

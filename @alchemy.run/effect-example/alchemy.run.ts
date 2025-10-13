@@ -17,7 +17,7 @@ const src = join(import.meta.dirname, "src");
 const stack = await Alchemy.plan({
   phase: process.argv.includes("--destroy") ? "destroy" : "update",
   resources: [
-    Alchemy.bind(Lambda.Lambda, Api, Bindings(SQS.SendMessage(Messages)), {
+    Alchemy.bind(Lambda.Function, Api, Bindings(SQS.SendMessage(Messages)), {
       main: join(src, "api.ts"),
       url: true,
     }),
@@ -27,11 +27,11 @@ const stack = await Alchemy.plan({
   Effect.catchTag("PlanRejected", () => Effect.void),
   Effect.provide(AlchemyCLI.layer),
   Effect.provide(AWS.layer),
-  Effect.provide(Alchemy.dotAlchemy),
   Effect.provide(Alchemy.State.localFs),
+  Effect.provide(Alchemy.dotAlchemy),
+  Effect.provide(Alchemy.app({ name: "my-iae-app", stage: "dev" })),
   Effect.provide(NodeContext.layer),
   // TODO(sam): combine this with Alchemy.plan to do it all in one-line
-  Effect.provide(Alchemy.app({ name: "my-iae-app", stage: "dev" })),
   Effect.runPromise,
 );
 

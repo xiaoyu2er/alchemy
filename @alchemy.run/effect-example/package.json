@@ -19,9 +19,9 @@
     "@alchemy.run/effect-cli": "workspace:*",
     "@alchemy.run/effect-aws": "workspace:*",
     "@alchemy.run/effect": "workspace:*",
-    "@effect/platform-node": "latest",
-    "@effect/platform": "latest",
+    "@effect/platform-node": "catalog:",
+    "@effect/platform": "catalog:",
     "alchemy": "workspace:*",
-    "effect": "latest"
+    "effect": "catalog:"
   }
 }

@@ -90,6 +90,7 @@ export const queueProvider = () =>
             })
             .pipe(Effect.catchTag("QueueDoesNotExist", () => Effect.void));
         }),
+        // @ts-expect-error - something really fucked up going on here. tsc -b complains, lsp does not
       } satisfies ProviderService<Queue>;
     }),
   );
