@@ -70,13 +70,14 @@ export type QueueProps<Msg = any> = {
     }
 );
 
-export type QueueAttr<Props extends QueueProps> = {
+export interface QueueAttr<Props extends QueueProps> {
   queueName: Props["queueName"] extends string ? Props["queueName"] : string;
   /**
    * URL of the queue.
    */
   queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
-};
+  queueArn: `arn:aws:sqs:${string}:${string}:${this["queueName"]}`;
+}
 
 export interface Queue extends Resource<QueueType> {
   props: QueueProps;

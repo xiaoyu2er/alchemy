@@ -80,6 +80,14 @@ export const consumeFromLambdaFunction = () =>
               [`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]:
                 queue.attr.queueUrl,
             },
+            policyStatements: [
+              {
+                // Sid: "",
+                Effect: "Allow",
+                Action: ["sqs:SendMessage"],
+                Resource: [queue.attr.queueArn],
+              },
+            ],
           };
         }),
       });

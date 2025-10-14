@@ -75,10 +75,17 @@ export const functionProvider = () =>
               // erase the Lambda(Capability) requirement
               // TODO(sam): move bindings into the core engine instead of replicating them here
             ) as unknown as Effect.Effect<BindingService, never, never>;
-            const bound = yield* binder.attach(binding.attributes, {
-              env,
-              policyStatements,
-            });
+            const bound = yield* binder.attach(
+              {
+                id: binding.capability.resource.id,
+                attr: binding.attributes,
+                props: binding.capability.resource.props,
+              },
+              {
+                env,
+                policyStatements,
+              },
+            );
             env = { ...env, ...(bound?.env ?? {}) };
             policyStatements.push(...(bound?.policyStatements ?? []));
           } else if (binding.action === "detach") {
@@ -86,14 +93,23 @@ export const functionProvider = () =>
           }
         }
 
-        yield* iam.putRolePolicy({
-          RoleName: roleName,
-          PolicyName: policyName,
-          PolicyDocument: JSON.stringify({
-            Version: "2012-10-17",
-            Statement: policyStatements,
-          } satisfies IAM.PolicyDocument),
-        });
+        if (policyStatements.length > 0) {
+          yield* iam.putRolePolicy({
+            RoleName: roleName,
+            PolicyName: policyName,
+            PolicyDocument: JSON.stringify({
+              Version: "2012-10-17",
+              Statement: policyStatements,
+            } satisfies IAM.PolicyDocument),
+          });
+        } else {
+          yield* iam
+            .deleteRolePolicy({
+              RoleName: roleName,
+              PolicyName: policyName,
+            })
+            .pipe(Effect.catchTag("NoSuchEntityException", () => Effect.void));
+        }
 
         return env;
       });
@@ -315,6 +331,13 @@ export const functionProvider = () =>
           } satisfies
             | CreateFunctionUrlConfigRequest
             | UpdateFunctionUrlConfigRequest;
+          const permission = {
+            FunctionName: functionName,
+            StatementId: "FunctionURLAllowPublicAccess",
+            Action: "lambda:InvokeFunctionUrl",
+            Principal: "*",
+            FunctionUrlAuthType: "NONE",
+          } as const;
           const [{ FunctionUrl }] = yield* Effect.all([
             lambda
               .createFunctionUrlConfig(config)
@@ -324,13 +347,17 @@ export const functionProvider = () =>
                 ),
               ),
             authType === "NONE"
-              ? lambda.addPermission({
-                  FunctionName: functionName,
-                  StatementId: "FunctionURLAllowPublicAccess",
-                  Action: "lambda:InvokeFunctionUrl",
-                  Principal: "*",
-                  FunctionUrlAuthType: "NONE",
-                })
+              ? lambda.addPermission(permission).pipe(
+                  Effect.catchTag("ResourceConflictException", () =>
+                    Effect.gen(function* () {
+                      yield* lambda.removePermission({
+                        FunctionName: functionName,
+                        StatementId: "FunctionURLAllowPublicAccess",
+                      });
+                      yield* lambda.addPermission(permission);
+                    }),
+                  ),
+                )
               : Effect.void,
           ]);
           return FunctionUrl;
