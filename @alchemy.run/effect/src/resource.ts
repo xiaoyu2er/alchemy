@@ -5,8 +5,8 @@ export type ResourceAttr = Record<string, any>;
 
 export const Resource =
   <const Type extends string>(type: Type) =>
-  <Self extends Resource<Type>>(): ResourceClass<Self> =>
-    (<const ID extends string, const Props extends Self["props"]>(
+  <Self extends Resource<Type>>(): ResourceClass<Self> => {
+    const cls = (<const ID extends string, const Props extends Self["props"]>(
       id: ID,
       props: Props,
     ) => {
@@ -20,6 +20,11 @@ export const Resource =
         parent: Resource!,
       });
     }) as unknown as ResourceClass<Self>;
+    return Object.assign(cls, {
+      kind: "ResourceClass",
+      type,
+    });
+  };
 
 export interface ResourceClass<R extends Resource = Resource> {
   kind: "ResourceClass";

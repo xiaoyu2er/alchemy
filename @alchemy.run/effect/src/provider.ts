@@ -11,9 +11,6 @@ export type Provider<R extends Resource> = Context.TagClass<
   ProviderService<R>
 >;
 export const Provider = <R extends ResourceClass | AnyRuntime>(R: R) => {
-  if (R === undefined) {
-    console.log(new Error().stack);
-  }
   return Context.Tag(R.type)() as Provider<
     // @ts-expect-error
     R extends ResourceClass ? InstanceType<R> : R

@@ -42,8 +42,8 @@ export declare namespace Runtime {
     Cap,
     Svc,
     Props,
-  > = // @ts-expect-error
-  (F & {
+    // @ts-expect-error
+  > = (F & {
     cap: Cap;
     svc: InstanceType<Extract<Svc, Service>>;
     props: Props;
@@ -81,12 +81,12 @@ export const Runtime =
         };
       },
       {
-        Kind: "Runtime",
-        Type: type,
+        kind: "Runtime",
+        type: type,
         service: undefined! as Service,
         capability: undefined! as Capability[],
         toString() {
-          return `${this.Type}(${this.service?.id}${this.capability?.length ? `, ${this.capability.map((c) => `${c}`).join(", ")}` : ""})`;
+          return `${this.type}(${this.service?.id}${this.capability?.length ? `, ${this.capability.map((c) => `${c}`).join(", ")}` : ""})`;
         },
         [Symbol.toStringTag]() {
           return this.toString();

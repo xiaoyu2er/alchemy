@@ -1,4 +1,4 @@
-import type { Resource } from "./resource";
+import type { Resource, ResourceClass } from "./resource";
 
 export type SerializedCapability<
   B extends Capability.Concrete = Capability.Concrete,
@@ -9,11 +9,15 @@ export type SerializedCapability<
   };
 };
 
-export const Capability = <Self extends Capability>(
-  type: Self["type"],
-): CapCtor<Self> => {
-  return undefined!;
-};
+export const Capability = <Self extends Capability>(type: Self["type"]) =>
+  (<R extends Resource | ResourceClass>(resource: R): Self =>
+    ({
+      type,
+      sid: `${type}-${resource.kind === "Resource" ? resource.id : resource.type}`,
+      label: `${type}(${resource.kind === "Resource" ? resource.id : resource.type})`,
+      resource,
+      // label
+    }) as any) as CapCtor<Self>;
 
 type CapCtor<Self> = Self & {
   // for syntax highlighting (color capability constructors as classes)
