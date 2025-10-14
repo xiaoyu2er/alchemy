@@ -74,7 +74,7 @@ export const consumeFromLambdaFunction = () =>
     Function(Consume(Queue)),
     Effect.gen(function* () {
       return Function(Consume(Queue)).of({
-        attach: Effect.fn(function* (queue) {
+        attach: Effect.fn(function* (queue, capability) {
           return {
             env: {
               [`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]:
@@ -82,7 +82,7 @@ export const consumeFromLambdaFunction = () =>
             },
             policyStatements: [
               {
-                // Sid: "",
+                Sid: capability.sid,
                 Effect: "Allow",
                 Action: ["sqs:SendMessage"],
                 Resource: [queue.attr.queueArn],

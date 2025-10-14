@@ -55,9 +55,18 @@ export type BindingService<
       attr: R["attr"];
       props: R["props"];
     },
+    capability: Capability.Concrete,
     to: Props,
   ) => Effect.Effect<Partial<Props> | void, never, AttachReq>;
-  detach?: (resource: R, from: Props) => Effect.Effect<void, never, DetachReq>;
+  detach?: (
+    resource: {
+      id: string;
+      attr: R["attr"];
+      props: R["props"];
+    },
+    capability: Capability.Concrete,
+    from: Props,
+  ) => Effect.Effect<void, never, DetachReq>;
 };
 
 export type Bindings = ReturnType<typeof Bindings>;

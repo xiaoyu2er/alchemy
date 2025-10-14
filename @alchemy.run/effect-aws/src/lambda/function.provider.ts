@@ -81,13 +81,20 @@ export const functionProvider = () =>
                 attr: binding.attributes,
                 props: binding.capability.resource.props,
               },
+              binding.capability,
               {
                 env,
                 policyStatements,
               },
             );
             env = { ...env, ...(bound?.env ?? {}) };
-            policyStatements.push(...(bound?.policyStatements ?? []));
+
+            policyStatements.push(
+              ...bound?.policyStatements?.map((stmt: IAM.PolicyStatement) => ({
+                ...stmt,
+                Sid: stmt.Sid?.replace(/[^A-Za-z0-9]+/gi, ""),
+              })),
+            );
           } else if (binding.action === "detach") {
             // no-op: PutRolePolicy will remove the removed statements
           }

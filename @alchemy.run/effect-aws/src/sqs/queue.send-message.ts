@@ -29,22 +29,27 @@ export const sendMessage = <Q extends Queue>(
     });
   });
 
+Function(SendMessage(Queue)).Service;
+
 export const sendMessageFromLambdaFunction = () =>
-  Layer.succeed(Function(SendMessage(Queue)), {
-    attach: Effect.fn(function* ({ resource: queue, binding }) {
-      return {
-        env: {
-          [`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]:
-            queue.queueUrl,
-        },
-        policyStatements: [
-          {
-            Sid: binding.stmt.sid,
-            Effect: "Allow",
-            Action: ["sqs:SendMessage"],
-            Resource: [queue.queueArn],
+  Layer.succeed(
+    Function(SendMessage(Queue)),
+    Function(SendMessage(Queue)).of({
+      attach: Effect.fn(function* (queue, capability) {
+        return {
+          env: {
+            [`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]:
+              queue.attr.queueUrl,
           },
-        ],
-      };
+          policyStatements: [
+            {
+              Sid: capability.sid,
+              Effect: "Allow",
+              Action: ["sqs:SendMessage"],
+              Resource: [queue.attr.queueArn],
+            },
+          ],
+        };
+      }),
     }),
-  });
+  );
