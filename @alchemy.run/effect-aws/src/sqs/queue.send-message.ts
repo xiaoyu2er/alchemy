@@ -1,27 +1,17 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import {
-  allow,
-  Capability,
-  type CapabilityType,
-  type Resource,
-} from "@alchemy.run/effect";
+import { allow, Capability, type Resource } from "@alchemy.run/effect";
 import { Function } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
 import { Queue } from "./queue.ts";
 
-// SendMessage (Binding)
-export interface SendMessageClass
-  extends CapabilityType<"AWS.SQS.SendMessage", Queue> {
-  readonly type: SendMessage<Resource.Instance<this["Target"]>>;
+export interface SendMessage<Resource = unknown>
+  extends Capability<"AWS.SQS.SendMessage", Resource> {
+  constructor: SendMessage;
+  construct: SendMessage<this["instance"]>;
 }
-export const SendMessage = Capability(
-  "AWS.SQS.SendMessage",
-  Queue,
-)<SendMessageClass>();
-export interface SendMessage<Q>
-  extends Capability<"AWS.SQS.SendMessage", Q, SendMessageClass> {}
+export const SendMessage = Capability<SendMessage>("AWS.SQS.SendMessage");
 
 export const sendMessage = <Q extends Queue>(
   queue: Q,

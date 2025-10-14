@@ -46,7 +46,7 @@ export type FunctionProvider = Provider<
   Function<Service, Capability, FunctionProps>
 >;
 
-export interface FunctionBinding<Cap extends Capability>
+export interface FunctionBinding<Cap extends Capability.Concrete>
   extends Binding<
     Function,
     Cap,

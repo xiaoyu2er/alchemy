@@ -11,11 +11,11 @@ export interface BindingProps {
 
 export interface Binding<
   Run extends RuntimeType<string, any, any> = RuntimeType<string, any, any>,
-  Cap extends Capability = Capability,
+  Cap extends Capability.Concrete = Capability.Concrete,
   BindingProps = any,
 > extends Context.TagClass<
     Runtime.Binding<Run, Cap>,
-    `${Cap["action"]}(${Cap["resource"]["type"]["Name"]}, ${Run["type"]})`,
+    `${Cap["action"]}(${Cap["resource"]["type"]}, ${Run["type"]})`,
     BindingService<Cap["resource"], BindingProps>
   > {
   Run: Run;
@@ -26,7 +26,7 @@ export interface Binding<
 export const Binding =
   <
     const Runtime extends string,
-    Cap extends Capability,
+    Cap extends Capability.Concrete,
     Props extends BindingProps,
   >(
     Runtime: Runtime,
@@ -35,8 +35,8 @@ export const Binding =
   <Self>(): Self =>
     Object.assign(
       Context.Tag(
-        `${Cap.action}(${Cap.resource.Type.Name}, ${Runtime})` as `${Cap["action"]}(${Cap["resource"]["Type"]["Name"]}, ${Runtime})`,
-      )<Self, BindingService<Cap["resource"]["Type"], Props>>(),
+        `${Cap.action}(${Cap.resource.type}, ${Runtime})` as `${Cap["action"]}(${Cap["resource"]["type"]}, ${Runtime})`,
+      )<Self, BindingService<Cap["resource"], Props>>(),
       {
         Kind: "Binding",
         Capability: Cap,

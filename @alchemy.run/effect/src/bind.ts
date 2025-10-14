@@ -1,5 +1,4 @@
 import * as Effect from "effect/Effect";
-import * as HKT from "effect/HKT";
 import * as util from "util";
 import { Capability } from "./capability.ts";
 import type { Policy } from "./policy.ts";
@@ -43,10 +42,10 @@ export const bind = <
       (Run & { svc: Service; cap: Cap; props: Props })["Instance"]
     >;
   } & {
-    [id in Exclude<Cap["resource"]["id"], Svc["id"]>]: Extract<
-      Cap["resource"],
-      { id: id }
-    >;
+    [id in Exclude<
+      Extract<Cap["resource"], { id: string }>["id"],
+      Svc["id"]
+    >]: Extract<Cap["resource"], { id: id }>;
   };
 
   type Providers<C extends Capability> = C extends any
@@ -54,13 +53,8 @@ export const bind = <
         | Runtime.Provider<Run, C, Service, Props>
         | Runtime.Binding<
             Run,
-            HKT.Kind<
-              Cap["class"],
-              never,
-              unknown,
-              unknown,
-              Cap["resource"]["parent"]
-            >
+            // @ts-expect-error
+            Capability.Instance<C["constructor"], Cap["resource"]["parent"]>
           >
     : never;
 
@@ -75,9 +69,11 @@ export const bind = <
     };
     return {
       ...(Object.fromEntries(
+        // @ts-expect-error
         Policy?.capabilities.map((cap) => [cap.resource.id, cap.resource]) ??
           [],
       ) as {
+        // @ts-expect-error
         [id in Cap["resource"]["id"]]: Extract<Cap["resource"], { id: id }>;
       }),
       [Svc.id]: {
@@ -94,7 +90,7 @@ export const bind = <
         },
       },
     };
-  }) as Effect.Effect<
+  }) as unknown as Effect.Effect<
     {
       [k in keyof Plan]: Plan[k];
     },

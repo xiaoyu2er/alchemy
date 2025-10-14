@@ -24,28 +24,28 @@ export const isBindNode = (node: any): node is BindNode => {
 /**
  * A node in the plan that represents a binding operation acting on a resource.
  */
-export type BindNode<Cap extends Capability = Capability> =
+export type BindNode<Cap extends Capability.Concrete = Capability.Concrete> =
   | Attach<Cap>
   | Detach<Cap>
   | NoopBind<Cap>;
 
-export type Attach<Cap extends Capability = Capability> = {
+export type Attach<Cap extends Capability.Concrete = Capability.Concrete> = {
   action: "attach";
   capability: Cap;
   olds?: SerializedCapability<Cap>;
-  attributes: Cap["resource"]["attr"];
+  attributes: Capability.Attr<Cap>;
 };
 
-export type Detach<Cap extends Capability = Capability> = {
+export type Detach<Cap extends Capability.Concrete = Capability.Concrete> = {
   action: "detach";
   capability: Cap;
-  attributes: Cap["resource"]["attr"];
+  attributes: Capability.Attr<Cap>;
 };
 
-export type NoopBind<Cap extends Capability = Capability> = {
+export type NoopBind<Cap extends Capability.Concrete = Capability.Concrete> = {
   action: "noop";
   capability: Cap;
-  attributes: Cap["resource"]["attr"];
+  attributes: Capability.Attr<Cap>;
 };
 
 export const isCRUD = (node: any): node is CRUD => {
@@ -435,7 +435,8 @@ const diffCapabilities = (
   const actions: BindNode[] = [];
   const oldCaps = oldState?.capabilities;
   const oldSids = new Set(oldCaps?.map((binding) => binding.sid));
-  for (const cap of caps) {
+  for (const _cap of caps) {
+    const cap = _cap as any;
     const sid = cap.sid ?? `${cap.action}:${cap.resource.ID}`;
     oldSids.delete(sid);
 
@@ -445,7 +446,7 @@ const diffCapabilities = (
         action: "attach",
         capability: cap,
         // phantom
-        attributes: cap.resource.Attr,
+        attributes: cap.resource.Attr as never,
       });
     } else if (isCapabilityDiff(oldBinding, cap)) {
       actions.push({
@@ -453,7 +454,7 @@ const diffCapabilities = (
         capability: cap,
         olds: oldBinding,
         // phantom
-        attributes: cap.resource.Attr,
+        attributes: cap.resource.Attr as never,
       });
     }
   }
@@ -467,9 +468,7 @@ const diffCapabilities = (
 };
 
 const isCapabilityDiff = (
-  oldBinding: SerializedCapability,
-  newBinding: Capability,
+  oldCap: SerializedCapability,
+  newCap: Capability.Concrete,
 ) =>
-  oldBinding.action !== newBinding.action ||
-  // oldBinding.Resource.Type !== newBinding.Resource.Type ||
-  oldBinding.resource.id !== newBinding.resource.id;
+  oldCap.action !== newCap.action || oldCap.resource.id !== newCap.resource.id;

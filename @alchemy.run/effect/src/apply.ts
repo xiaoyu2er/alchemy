@@ -56,9 +56,7 @@ export const apply = <const P extends Plan, Err, Req>(
         const { emit, done } = session;
 
         const apply: (
-          node:
-            | (BindNode<Capability> | SerializedCapability<Capability>)[]
-            | CRUD,
+          node: (BindNode | SerializedCapability)[] | CRUD,
         ) => Effect.Effect<any, never, never> = (node) =>
           Effect.gen(function* () {
             if (Array.isArray(node)) {

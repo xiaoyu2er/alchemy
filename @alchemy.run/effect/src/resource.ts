@@ -59,17 +59,19 @@ export interface ResourceClass<R extends Resource = Resource> {
 }
 
 export declare namespace Resource {
-  export type Instance<R> = R extends (...args: any[]) => infer I
-    ? I
-    : R extends new (
-          ...args: any[]
-        ) => infer I
+  export type Instance<R> = R extends ResourceClass
+    ? R["resource"]
+    : R extends (...args: any[]) => infer I
       ? I
       : R extends new (
-            _: never,
+            ...args: any[]
           ) => infer I
         ? I
-        : R;
+        : R extends new (
+              _: never,
+            ) => infer I
+          ? I
+          : R;
 }
 
 export interface Resource<type extends ResourceType = ResourceType> {

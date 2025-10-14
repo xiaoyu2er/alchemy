@@ -20,7 +20,7 @@ export interface RuntimeType<
   service: Extract<this["svc"], Service>;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */
   cap: Cap;
-  capability: Extract<this["cap"], Capability>;
+  capability: Extract<this["cap"], Capability.Concrete>;
 }
 export declare namespace Runtime {
   export type Binding<

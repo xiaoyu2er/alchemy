@@ -5,23 +5,15 @@ import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
 import { Function } from "../lambda/function.ts";
 
-import {
-  allow,
-  Capability,
-  Resource,
-  Service,
-  type CapabilityType,
-} from "@alchemy.run/effect";
+import { allow, Capability, Resource, Service } from "@alchemy.run/effect";
 import { Queue } from "./queue.ts";
 
-export interface ConsumeClass extends CapabilityType<"AWS.SQS.Consume", Queue> {
-  readonly type: Consume<Resource.Instance<this["Target"]>>;
+export interface Consume<Resource = unknown>
+  extends Capability<"AWS.SQS.Consume", Resource> {
+  constructor: Consume;
+  construct: Consume<this["instance"]>;
 }
-
-export const Consume = Capability("AWS.SQS.Consume", Queue)<ConsumeClass>();
-
-export interface Consume<Q>
-  extends Capability<"AWS.SQS.Consume", Q, ConsumeClass> {}
+export const Consume = Capability<Consume>("AWS.SQS.Consume");
 
 export type SQSRecord<Data> = Omit<lambda.SQSRecord, "body"> & {
   body: Data;

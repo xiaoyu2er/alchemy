@@ -91,7 +91,7 @@ export function Plan({ plan }: PlanProps): React.JSX.Element {
                   const bindingIcon = bindingActionIcon(binding.action);
                   return (
                     <Box
-                      key={binding.capability.resource.ID}
+                      key={binding.capability.resource.id}
                       flexDirection="row"
                     >
                       <Box width={4}>
