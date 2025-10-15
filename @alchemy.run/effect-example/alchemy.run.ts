@@ -1,15 +1,13 @@
-import { join } from "node:path";
-
-import { NodeContext } from "@effect/platform-node";
-import * as Effect from "effect/Effect";
-
 import * as Alchemy from "@alchemy.run/effect";
 import { Bindings } from "@alchemy.run/effect";
 import * as AWS from "@alchemy.run/effect-aws";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as AlchemyCLI from "@alchemy.run/effect-cli";
-
+import { FetchHttpClient } from "@effect/platform";
+import { NodeContext } from "@effect/platform-node";
+import * as Effect from "effect/Effect";
+import { join } from "node:path";
 import { Api, Consumer, Messages } from "./src/index.ts";
 
 const src = join(import.meta.dirname, "src");
@@ -39,7 +37,6 @@ const plan = Alchemy.plan({
 });
 
 const stack = await plan.pipe(
-  // TODO(sam): combine this with Alchemy.plan to do it all in one-line
   Alchemy.apply,
   Effect.catchTag("PlanRejected", () => Effect.void),
   Effect.provide(AlchemyCLI.layer),
@@ -48,14 +45,7 @@ const stack = await plan.pipe(
   Effect.provide(Alchemy.dotAlchemy),
   Effect.provide(Alchemy.app({ name: "my-iae-app", stage: "dev" })),
   Effect.provide(NodeContext.layer),
+  Effect.provide(FetchHttpClient.layer),
+  Effect.tap((stack) => Effect.log(stack?.api.functionUrl)),
   Effect.runPromise,
 );
-
-if (stack) {
-  const { api, messages } = stack;
-  console.log(stack.api.functionUrl);
-  messages.queueUrl;
-  messages.queueName;
-}
-
-export default stack;

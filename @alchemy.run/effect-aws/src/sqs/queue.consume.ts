@@ -76,10 +76,6 @@ export const consumeFromLambdaFunction = () =>
       return Function(Consume(Queue)).of({
         attach: Effect.fn(function* (queue, capability) {
           return {
-            env: {
-              [`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]:
-                queue.attr.queueUrl,
-            },
             policyStatements: [
               {
                 Sid: capability.sid,

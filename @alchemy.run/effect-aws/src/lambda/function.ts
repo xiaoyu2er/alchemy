@@ -29,8 +29,8 @@ export type FunctionAttr<Props extends FunctionProps = FunctionProps> = {
   };
 };
 
-export interface Function<svc = unknown, cap = unknown, props = unknown>
-  extends Runtime<FunctionType, svc, cap> {
+export interface Function<svc = unknown, cap = unknown, props = FunctionProps>
+  extends Runtime<FunctionType, svc, cap, props> {
   readonly Provider: FunctionProvider;
   readonly Binding: FunctionBinding<this["capability"]>;
   readonly Instance: Function<

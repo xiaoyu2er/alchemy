@@ -57,7 +57,7 @@
         "aws4fetch": "^1.0.20",
         "effect": "^3.17.14",
         "fast-xml-parser": "^5.2.5",
-        "itty-aws": "^0.3.6",
+        "itty-aws": "0.4.1",
         "picocolors": "^1.1.1",
         "yaml": "^2.0.0",
       },
@@ -3904,7 +3904,7 @@
 
     "iterator.prototype": ["iterator.prototype@1.1.5", "", { "dependencies": { "define-data-property": "^1.1.4", "es-object-atoms": "^1.0.0", "get-intrinsic": "^1.2.6", "get-proto": "^1.0.0", "has-symbols": "^1.1.0", "set-function-name": "^2.0.2" } }, "sha512-H0dkQoCa3b2VEeKQBOxFph+JAbcrQdE7KC0UkqwpLmv2EC4P41QXP+rqo9wYodACiG5/WM5s9oDApTU8utwj9g=="],
 
-    "itty-aws": ["itty-aws@0.3.8", "", { "dependencies": { "aws4fetch": "^1.0.20" }, "peerDependencies": { "@aws-sdk/credential-providers": "^3", "@effect/platform": "^0.87.12", "@effect/platform-node": "^0.89.5", "effect": "^3" } }, "sha512-xm6l0c//jALawbaPsO17YsXopco9NRs2/6tb3LXq3W1vNkIDR8XKcYiaDIcnew7KRCeJaixK5C+iz4cJwtl8lg=="],
+    "itty-aws": ["itty-aws@0.4.1", "", { "dependencies": { "aws4fetch": "^1.0.20" }, "peerDependencies": { "@aws-sdk/credential-providers": "^3", "@effect/platform": "^0.87.12", "@effect/platform-node": "^0.89.5", "effect": "^3" } }, "sha512-kcSxo3QO0/F/0xPaotORs1X1rSrKpyJXSVynjUne5Sb8OHrYBADqBiSjA8RC6qzDDnibEudbq0QsKeB8t4aB5Q=="],
 
     "jackspeak": ["jackspeak@4.1.1", "", { "dependencies": { "@isaacs/cliui": "^8.0.2" } }, "sha512-zptv57P3GpL+O0I7VdMJNBZCu+BPHVQUk55Ft8/QCJjTVxrnJHuVuX/0Bl2A6/+2oyR/ZMEuFKwmzqqZ/U5nPQ=="],
 

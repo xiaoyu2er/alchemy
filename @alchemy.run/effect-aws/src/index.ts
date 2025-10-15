@@ -8,6 +8,8 @@ import * as S3 from "./s3.ts";
 import * as SQS from "./sqs/index.ts";
 import * as STS from "./sts.ts";
 
+export * from "./profile.ts";
+
 export const providers = Layer.merge(
   Layer.provide(Lambda.functionProvider(), Lambda.client()),
   Layer.provide(SQS.queueProvider(), SQS.client()),
@@ -35,7 +37,7 @@ export const defaultProviders = providers.pipe(
 
 export const live = defaultProviders.pipe(
   Layer.provide(Region.fromEnv()),
-  Layer.provide(Credentials.fromChain()),
+  Layer.provide(Credentials.fromSSO()),
 );
 
 export default live;

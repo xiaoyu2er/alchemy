@@ -29,8 +29,6 @@ export const sendMessage = <Q extends Queue>(
     });
   });
 
-Function(SendMessage(Queue)).Service;
-
 export const sendMessageFromLambdaFunction = () =>
   Layer.succeed(
     Function(SendMessage(Queue)),

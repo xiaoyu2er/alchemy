@@ -66,7 +66,8 @@ export const queueProvider = () =>
                 ),
               }),
             );
-          const queueArn = `arn:aws:sqs:${region}:${accountId}:${queueName}`;
+          const queueArn =
+            `arn:aws:sqs:${region}:${accountId}:${queueName}` as const;
           const queueUrl = response.QueueUrl!;
           yield* session.note(queueUrl);
           return {
