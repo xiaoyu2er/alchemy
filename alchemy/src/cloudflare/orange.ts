@@ -1,5 +1,5 @@
-import type { Assets } from "./assets.js";
-import type { Bindings } from "./bindings.js";
+import type { Assets } from "./assets.ts";
+import type { Bindings } from "./bindings.ts";
 import { Vite, type ViteProps } from "./vite/vite.ts";
 import type { Worker } from "./worker.ts";
 

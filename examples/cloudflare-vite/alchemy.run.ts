@@ -28,7 +28,7 @@ console.log({
 });
 
 if (process.env.ALCHEMY_E2E) {
-  const { test } = await import("./test/e2e.js");
+  const { test } = await import("./test/e2e.ts");
   await test({
     url: website.url,
     env: { ALCHEMY_TEST_VALUE: "Hello from Alchemy!" },

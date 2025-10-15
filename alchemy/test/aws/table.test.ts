@@ -4,10 +4,10 @@ import {
   ResourceNotFoundException,
 } from "@aws-sdk/client-dynamodb";
 import { describe, expect } from "vitest";
-import { alchemy } from "../../src/alchemy.js";
-import { Table } from "../../src/aws/table.js";
-import { destroy } from "../../src/destroy.js";
-import { BRANCH_PREFIX } from "../util.js";
+import { alchemy } from "../../src/alchemy.ts";
+import { Table } from "../../src/aws/table.ts";
+import { destroy } from "../../src/destroy.ts";
+import { BRANCH_PREFIX } from "../util.ts";
 
 import "../../src/test/vitest.ts";
 

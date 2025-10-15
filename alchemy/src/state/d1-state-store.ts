@@ -29,7 +29,7 @@ export class D1StateStore extends StateStoreProxy {
 
   async provision(): Promise<StateStoreProxy.Dispatch> {
     const db = await createDatabaseClient(this.options);
-    const { SQLiteStateStoreOperations } = await import("./operations.js");
+    const { SQLiteStateStoreOperations } = await import("./operations.ts");
     const operations = new SQLiteStateStoreOperations(db, {
       chain: this.scope.chain,
     });
@@ -70,7 +70,7 @@ const createDatabaseClient = memoize(async (options: D1StateStoreOptions) => {
     };
   };
   return drizzle(remoteCallback, {
-    schema: await import("./schema.js"),
+    schema: await import("./schema.ts"),
   });
 });
 

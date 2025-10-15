@@ -21,6 +21,7 @@
     "alchemy": "workspace:*",
     "astro": "^5.12.8",
     "astro-icon": "^1.1.5",
+    "nanoid": "^5.1.6",
     "starlight-blog": "^0.24.0",
     "starlight-links-validator": "^0.17.2",
     "tailwindcss": "^4.1.14"

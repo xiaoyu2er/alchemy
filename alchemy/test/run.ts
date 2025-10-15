@@ -1,4 +1,4 @@
-import { runChangedTests } from "../src/test/prune.js";
+import { runChangedTests } from "../src/test/prune.ts";
 
 /**
  * This script detects which tests have changed using esbuild and git and then runs only those tests.

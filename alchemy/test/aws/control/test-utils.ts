@@ -1,4 +1,4 @@
-import { createCloudControlClient } from "../../../src/aws/control/client.js";
+import { createCloudControlClient } from "../../../src/aws/control/client.ts";
 
 const client = await createCloudControlClient();
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import OpenAI from "openai";
 import prettier from "prettier";
 import * as ts from "typescript";
-import { generateAwsControlTypes } from "./generate-aws-control-types.js";
+import { generateAwsControlTypes } from "./generate-aws-control-types.ts";
 
 // Parse CLI arguments
 const args = process.argv.slice(2);

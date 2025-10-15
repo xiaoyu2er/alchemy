@@ -1,4 +1,4 @@
-import { exec } from "../alchemy/src/os/exec.js";
+import { exec } from "../alchemy/src/os/exec.ts";
 import { website } from "../stacks/src/website.run.ts";
 
 const command = process.argv.slice(2).join(" ");

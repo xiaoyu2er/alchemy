@@ -1,12 +1,12 @@
 import { describe, expect } from "vitest";
-import { alchemy } from "../../../src/alchemy.js";
-import AWS from "../../../src/aws/control/index.js";
-import { destroy } from "../../../src/destroy.js";
-import { BRANCH_PREFIX } from "../../util.js";
-import { waitForStableDeletion } from "./test-utils.js";
+import { alchemy } from "../../../src/alchemy.ts";
+import AWS from "../../../src/aws/control/index.ts";
+import { destroy } from "../../../src/destroy.ts";
+import { BRANCH_PREFIX } from "../../util.ts";
+import { waitForStableDeletion } from "./test-utils.ts";
 // must import this or else alchemy.test won't exist
-import { ValidationException } from "../../../src/aws/control/error.js";
-import "../../../src/test/vitest.js";
+import { ValidationException } from "../../../src/aws/control/error.ts";
+import "../../../src/test/vitest.ts";
 
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,

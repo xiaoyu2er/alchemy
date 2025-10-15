@@ -1,12 +1,12 @@
 import { describe, expect } from "vitest";
-import { alchemy } from "../../../src/alchemy.js";
-import { createCloudControlClient } from "../../../src/aws/control/client.js";
-import { CloudControlResource } from "../../../src/aws/control/resource.js";
-import { destroy } from "../../../src/destroy.js";
-import { BRANCH_PREFIX } from "../../util.js";
-import { waitForStableDeletion } from "./test-utils.js";
+import { alchemy } from "../../../src/alchemy.ts";
+import { createCloudControlClient } from "../../../src/aws/control/client.ts";
+import { CloudControlResource } from "../../../src/aws/control/resource.ts";
+import { destroy } from "../../../src/destroy.ts";
+import { BRANCH_PREFIX } from "../../util.ts";
+import { waitForStableDeletion } from "./test-utils.ts";
 // must import this or else alchemy.test won't exist
-import "../../../src/test/vitest.js";
+import "../../../src/test/vitest.ts";
 
 const client = await createCloudControlClient();
 

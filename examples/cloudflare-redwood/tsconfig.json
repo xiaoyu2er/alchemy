@@ -5,6 +5,7 @@
     }
   ],
   "compilerOptions": {
+
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
     /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
@@ -39,6 +40,7 @@
     "allowSyntheticDefaultImports": true,
     /* Ensure that casing is correct in imports. */
     "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
 
     /* Enable all strict type-checking options. */
     "strict": true,

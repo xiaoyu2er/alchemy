@@ -7,16 +7,16 @@ import {
 } from "@aws-sdk/client-lambda";
 import path from "node:path";
 import { describe, expect } from "vitest";
-import { alchemy } from "../../src/alchemy.js";
-import { Function } from "../../src/aws/function.js";
-import type { PolicyDocument } from "../../src/aws/policy.js";
-import { Role } from "../../src/aws/role.js";
-import { destroy } from "../../src/destroy.js";
-import { Bundle } from "../../src/esbuild/index.js";
+import { alchemy } from "../../src/alchemy.ts";
+import { Function } from "../../src/aws/function.ts";
+import type { PolicyDocument } from "../../src/aws/policy.ts";
+import { Role } from "../../src/aws/role.ts";
+import { destroy } from "../../src/destroy.ts";
+import { Bundle } from "../../src/esbuild/index.ts";
 import { fetchAndExpectOK } from "../../src/util/safe-fetch.ts";
-import { BRANCH_PREFIX } from "../util.js";
+import { BRANCH_PREFIX } from "../util.ts";
 
-import "../../src/test/vitest.js";
+import "../../src/test/vitest.ts";
 
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,

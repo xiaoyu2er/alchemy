@@ -1,14 +1,14 @@
 import fs from "node:fs/promises";
 import { describe, expect } from "vitest";
-import { alchemy } from "../src/alchemy.js";
-import { destroy } from "../src/destroy.js";
-import { FileSystemStateStore } from "../src/fs/file-system-state-store.js";
-import { File } from "../src/fs/file.js";
-import { Scope } from "../src/scope.js";
-import { BRANCH_PREFIX, createTestOptions, STATE_STORE_TYPES } from "./util.js";
+import { alchemy } from "../src/alchemy.ts";
+import { destroy } from "../src/destroy.ts";
+import { FileSystemStateStore } from "../src/fs/file-system-state-store.ts";
+import { File } from "../src/fs/file.ts";
+import { Scope } from "../src/scope.ts";
+import { BRANCH_PREFIX, createTestOptions, STATE_STORE_TYPES } from "./util.ts";
 
-import { Resource, ResourceScope } from "../src/resource.js";
-import "../src/test/vitest.js";
+import { Resource, ResourceScope } from "../src/resource.ts";
+import "../src/test/vitest.ts";
 
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,

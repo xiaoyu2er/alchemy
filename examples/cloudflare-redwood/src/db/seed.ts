@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { defineScript } from "rwsdk/worker";
-import { users } from "./schema.js";
+import { users } from "./schema.ts";
 
 export default defineScript(async ({ env }) => {
   const db = drizzle(env.DB);

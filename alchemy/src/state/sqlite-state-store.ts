@@ -97,7 +97,7 @@ export class SQLiteStateStore extends StateStoreProxy {
       ...(this.options ?? {}),
       dotAlchemy: this.scope.dotAlchemy,
     });
-    const { SQLiteStateStoreOperations } = await import("./operations.js");
+    const { SQLiteStateStoreOperations } = await import("./operations.ts");
     const operations = new SQLiteStateStoreOperations(db, {
       chain: this.scope.chain,
     });
@@ -152,7 +152,7 @@ async function createBunSQLiteDatabase(
     "SQLiteStateStore",
   );
   const { migrate } = await import("drizzle-orm/bun-sqlite/migrator");
-  const schema = await import("./schema.js");
+  const schema = await import("./schema.ts");
   // Bun's constructor throws if we pass in an empty object or if extraneous
   // options are passed in, so here's some ugly destructuring!
   const { engine: _engine, filename: _filename, ...rest } = options ?? {};
@@ -190,7 +190,7 @@ async function createLibSQLDatabase(
     "SQLiteStateStore (libsql)",
   );
   const { migrate } = await import("drizzle-orm/libsql/migrator");
-  const schema = await import("./schema.js");
+  const schema = await import("./schema.ts");
   const client = createClient({ url, ...options });
   await client.execute("PRAGMA journal_mode = WAL;");
   const db = drizzle(client, {

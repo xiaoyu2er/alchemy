@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { queue, worker } from "../alchemy.run.ts";
-export * from "./do.js";
-export * from "./workflow.js";
+export * from "./do.ts";
+export * from "./workflow.ts";
 
 export default {
   async fetch(_request: Request) {

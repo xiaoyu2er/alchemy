@@ -24,7 +24,7 @@ console.log({
 });
 
 if (process.env.ALCHEMY_E2E) {
-  const { test } = await import("./test/e2e.js");
+  const { test } = await import("./test/e2e.ts");
   await test({
     url: website.url,
     env: { TEST_SECRET_VALUE: "test-secret-value" },
