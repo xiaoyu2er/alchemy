@@ -10,11 +10,10 @@ export type Provider<R extends Resource> = Context.TagClass<
   R["type"],
   ProviderService<R>
 >;
-export const Provider = <R extends ResourceClass | AnyRuntime>(R: R) => {
-  return Context.Tag(R.type)() as Provider<
-    // @ts-expect-error
-    R extends ResourceClass ? InstanceType<R> : R
-  >;
+export const Provider = <R extends ResourceClass | AnyRuntime | Resource>(
+  R: R,
+) => {
+  return Context.Tag(R.type)() as Provider<Resource.Instance<R>>;
 };
 
 export type Diff =

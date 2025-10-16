@@ -6,10 +6,14 @@ import { Messages } from "./messages.ts";
 // business logic
 export class Consumer extends SQS.consume(
   Messages,
-  "consumer",
+  "Consumer",
   Effect.fn(function* (batch) {
     for (const record of batch.Records) {
       console.log(record);
+      yield* SQS.sendMessage(Messages, {
+        id: 1,
+        value: "1",
+      }).pipe(Effect.catchAll(() => Effect.void));
     }
   }),
 ) {}

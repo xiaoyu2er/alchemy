@@ -245,9 +245,6 @@ export const plan = <
                             : resource.props;
 
                           const oldState = yield* state.get(id);
-                          if (!resource.parent) {
-                            console.log({ resource: resource });
-                          }
                           const provider: ProviderService = yield* Provider(
                             resource.parent as ResourceClass,
                           );

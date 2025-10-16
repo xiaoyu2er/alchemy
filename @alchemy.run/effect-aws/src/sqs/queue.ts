@@ -5,8 +5,12 @@ import { Resource } from "@alchemy.run/effect";
 // required to avoid this error in consumers: "The inferred type of 'Messages' cannot be named without a reference to '../../effect-aws/node_modules/@types/aws-lambda'. This is likely not portable. A type annotation is necessary.ts(2742)"
 export type * as lambda from "aws-lambda";
 
-export type QueueType = typeof QueueType;
-export const QueueType = "AWS.SQS.Queue";
+export const Queue = Resource<Queue>("AWS.SQS.Queue");
+
+export interface Queue extends Resource<"AWS.SQS.Queue"> {
+  props: QueueProps;
+  attr: QueueAttr<this["props"]>;
+}
 
 export type QueueProps<Msg = any> = {
   /**
@@ -78,10 +82,3 @@ export interface QueueAttr<Props extends QueueProps> {
   queueUrl: Props["fifo"] extends true ? `${string}.fifo` : string;
   queueArn: `arn:aws:sqs:${string}:${string}:${this["queueName"]}`;
 }
-
-export interface Queue extends Resource<QueueType> {
-  props: QueueProps;
-  attr: QueueAttr<this["props"]>;
-}
-
-export const Queue = Resource(QueueType)<Queue>();

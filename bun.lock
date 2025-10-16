@@ -58,7 +58,6 @@
         "effect": "^3.17.14",
         "fast-xml-parser": "^5.2.5",
         "itty-aws": "0.4.1",
-        "picocolors": "^1.1.1",
         "yaml": "^2.0.0",
       },
       "devDependencies": {
@@ -67,7 +66,6 @@
         "@effect/platform-node": "catalog:",
         "@types/bun": "latest",
         "@types/node": "latest",
-        "ink": "^6.3.1",
       },
       "peerDependencies": {
         "@alchemy.run/effect": "workspace:*",
@@ -103,6 +101,27 @@
         "@effect/platform": "*",
         "@effect/platform-node": "*",
         "alchemy": "workspace:*",
+      },
+    },
+    "@alchemy.run/effect-cloudflare": {
+      "name": "@alchemy.run/effect-cloudflare",
+      "version": "0.0.0",
+      "dependencies": {
+        "cloudflare": "^5.2.0",
+        "effect": "^3.17.14",
+      },
+      "devDependencies": {
+        "@clack/prompts": "^0.11.0",
+        "@effect/platform": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "@types/bun": "latest",
+        "@types/node": "latest",
+      },
+      "peerDependencies": {
+        "@alchemy.run/effect": "workspace:*",
+        "@effect/platform": "*",
+        "@effect/platform-node": "*",
+        "effect": "*",
       },
     },
     "@alchemy.run/effect-example": {
@@ -855,6 +874,8 @@
     "@alchemy.run/effect-aws": ["@alchemy.run/effect-aws@workspace:@alchemy.run/effect-aws"],
 
     "@alchemy.run/effect-cli": ["@alchemy.run/effect-cli@workspace:@alchemy.run/effect-cli"],
+
+    "@alchemy.run/effect-cloudflare": ["@alchemy.run/effect-cloudflare@workspace:@alchemy.run/effect-cloudflare"],
 
     "@alchemy.run/effect-example": ["@alchemy.run/effect-example@workspace:@alchemy.run/effect-example"],
 

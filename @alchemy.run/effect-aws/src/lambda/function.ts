@@ -1,10 +1,4 @@
-import {
-  Binding,
-  Capability,
-  Provider,
-  Runtime,
-  Service,
-} from "@alchemy.run/effect";
+import { Binding, Capability, Provider, Runtime } from "@alchemy.run/effect";
 
 export const FunctionType = "AWS.Lambda.Function";
 export type FunctionType = typeof FunctionType;
@@ -43,7 +37,7 @@ export interface Function<svc = unknown, cap = unknown, props = FunctionProps>
 export const Function = Runtime(FunctionType)<Function>();
 
 export type FunctionProvider = Provider<
-  Function<Service, Capability, FunctionProps>
+  Function<unknown, unknown, FunctionProps>
 >;
 
 export interface FunctionBinding<Cap extends Capability.Concrete>

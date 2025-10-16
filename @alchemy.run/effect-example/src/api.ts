@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as S from "effect/Schema";
 import { Message, Messages } from "./messages.ts";
 
+// Biz Logic (isolated) easy to test, portable, decoupled from physical infrastructure
 export class Api extends Lambda.serve(
   "api",
   Effect.fn(function* (req) {
@@ -20,5 +21,5 @@ export class Api extends Lambda.serve(
   }),
 ) {}
 
-// runtime handler
+// coupled to physical infrastructure (actual SQS client)
 export default Api.pipe(Effect.provide(SQS.clientFromEnv()), Lambda.toHandler);

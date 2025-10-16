@@ -65,7 +65,6 @@
     "effect": "^3.17.14",
     "fast-xml-parser": "^5.2.5",
     "itty-aws": "0.4.1",
-    "picocolors": "^1.1.1",
     "yaml": "^2.0.0"
   },
   "devDependencies": {
@@ -73,7 +72,6 @@
     "@effect/platform-node": "catalog:",
     "@effect/platform": "catalog:",
     "@types/bun": "latest",
-    "@types/node": "latest",
-    "ink": "^6.3.1"
+    "@types/node": "latest"
   }
 }

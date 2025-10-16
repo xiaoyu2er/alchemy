@@ -6,7 +6,13 @@ export class Message extends S.Struct({
   value: S.String,
 }) {}
 
-export class Messages extends SQS.Queue("messages", {
+// Declared queue dependency
+export class Messages extends SQS.Queue("Messages", {
   fifo: true,
   schema: Message,
 }) {}
+
+// triangulation
+// 1. Runtime Business Logic
+// 2. Deloyed Bundle
+// 3. Infrastructure

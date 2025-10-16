@@ -12,7 +12,7 @@ export interface RuntimeType<
   Cap = unknown,
   Props = unknown,
 > extends Resource<Type> {
-  new (...args: any[]): {};
+  new (_: never): {};
   type: Type;
   props: Props;
   /** @internal - we need to use `unknown` or else implicit intersections are performed, so instead we expose the mapped form */

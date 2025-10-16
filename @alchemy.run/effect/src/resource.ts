@@ -3,28 +3,28 @@ export type ResourceID = string;
 export type ResourceProps = Record<string, any>;
 export type ResourceAttr = Record<string, any>;
 
-export const Resource =
-  <const Type extends string>(type: Type) =>
-  <Self extends Resource<Type>>(): ResourceClass<Self> => {
-    const cls = (<const ID extends string, const Props extends Self["props"]>(
-      id: ID,
-      props: Props,
-    ) => {
-      class Resource {}
-      return Object.assign(Resource, {
-        kind: "Resource",
-        type,
-        id,
-        props,
-        attr: undefined!,
-        parent: Resource!,
-      });
-    }) as unknown as ResourceClass<Self>;
-    return Object.assign(cls, {
-      kind: "ResourceClass",
+export const Resource = <Self extends Resource<string>>(
+  type: Self["type"],
+): ResourceClass<Self> => {
+  const cls = (<const ID extends string, const Props extends Self["props"]>(
+    id: ID,
+    props: Props,
+  ) => {
+    class Resource {}
+    return Object.assign(Resource, {
+      kind: "Resource",
       type,
+      id,
+      props,
+      attr: undefined!,
+      parent: Resource!,
     });
-  };
+  }) as unknown as ResourceClass<Self>;
+  return Object.assign(cls, {
+    kind: "ResourceClass",
+    type,
+  });
+};
 
 export interface ResourceClass<R extends Resource = Resource> {
   kind: "ResourceClass";
@@ -63,20 +63,33 @@ export interface ResourceClass<R extends Resource = Resource> {
   };
 }
 
+type IsEmptyObject<T> = keyof T extends never ? true : false;
+
 export declare namespace Resource {
-  export type Instance<R> = R extends ResourceClass
-    ? R["resource"]
-    : R extends (...args: any[]) => infer I
-      ? I
-      : R extends new (
-            ...args: any[]
-          ) => infer I
+  export type Instance<R> = R extends { kind: "Resource" }
+    ? R extends new (
+        _: never,
+      ) => infer I
+      ? IsEmptyObject<I> extends true
+        ? R
+        : I
+      : R
+    : R extends {
+          kind: "ResourceClass";
+          resource: unknown;
+        }
+      ? R["resource"]
+      : R extends (...args: any[]) => infer I
         ? I
         : R extends new (
-              _: never,
+              ...args: any[]
             ) => infer I
           ? I
-          : R;
+          : R extends new (
+                _: never,
+              ) => infer I
+            ? I
+            : R;
 }
 
 export interface Resource<type extends ResourceType = ResourceType> {
@@ -87,7 +100,5 @@ export interface Resource<type extends ResourceType = ResourceType> {
   /** @internal phantom type */
   attr: unknown;
   parent: unknown;
-  // new (...args: any[]): Resource<Type, ID, Props, Attr, Parent>;
   capability?: unknown;
-  // new(_: never): Resource<type>;
 }

@@ -25,7 +25,7 @@ const api = Alchemy.bind(
 const consumer = Alchemy.bind(
   Lambda.Function,
   Consumer,
-  Bindings(SQS.Consume(Messages)),
+  Bindings(SQS.Consume(Messages), SQS.SendMessage(Messages)),
   {
     main: join(src, "consumer.ts"),
   },
