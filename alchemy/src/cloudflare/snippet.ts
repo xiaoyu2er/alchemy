@@ -1,6 +1,5 @@
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
-import { logger } from "../util/logger.ts";
 import { handleApiError } from "./api-error.ts";
 import { extractCloudflareResult } from "./api-response.ts";
 import {
@@ -22,6 +21,7 @@ export interface SnippetProps extends CloudflareApiOptions {
   /**
    * The identifying name of the snippet
    * Must be unique within the zone
+   * Only lowercase letters (a-z), numbers (0-9), and underscores (_) are allowed
    */
   name: string;
 
@@ -48,6 +48,12 @@ export interface SnippetProps extends CloudflareApiOptions {
    * @internal
    */
   zoneId?: string;
+
+  /**
+   * The snippet name (only used for update/delete operations)
+   * @internal
+   */
+  snippetId?: string;
 }
 
 /**
@@ -81,7 +87,7 @@ export interface SnippetRule {
  * Output returned after Snippet creation/update.
  * IMPORTANT: The type name MUST match the exported resource name.
  */
-export type Snippet = Omit<SnippetProps, "zone" | "content"> & {
+export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
   /**
    * The ID of the resource
    */
@@ -91,6 +97,12 @@ export type Snippet = Omit<SnippetProps, "zone" | "content"> & {
    * The identifying name of the snippet
    */
   name: string;
+
+  /**
+   * The snippet name (used for update/delete operations)
+   * @internal
+   */
+  snippetId: string;
 
   /**
    * The zone ID this snippet belongs to
@@ -185,39 +197,17 @@ export const Snippet = Resource(
       props.zoneId ||
       this.output?.zoneId ||
       (typeof props.zone === "string" ? props.zone : props.zone.id);
+    const snippetId = props.snippetId || this.output?.snippetId || props.name;
     const adopt = props.adopt ?? this.scope.adopt;
 
     if (this.phase === "delete") {
-      if (props.delete !== false && this.output?.name) {
-        try {
-          const deleteResponse = await api.delete(
-            `/zones/${zoneId}/snippets/${this.output.name}`,
-          );
-          if (!deleteResponse.ok && deleteResponse.status !== 404) {
-            await handleApiError(
-              deleteResponse,
-              "delete",
-              "snippet",
-              this.output.name,
-            );
-          }
-        } catch (error) {
-          logger.error(`Error deleting snippet ${this.output.name}:`, error);
-          throw error;
-        }
+      if (props.delete !== false && snippetId) {
+        await deleteSnippet(api, zoneId, snippetId);
       }
       return this.destroy();
     }
 
-    let exists = false;
-    try {
-      const getResponse = await api.get(
-        `/zones/${zoneId}/snippets/${props.name}`,
-      );
-      exists = getResponse.ok;
-    } catch (_error) {
-      exists = false;
-    }
+    const exists = await snippetExists(api, zoneId, props.name);
 
     if (this.phase === "create" && exists && !adopt) {
       throw new Error(
@@ -225,45 +215,20 @@ export const Snippet = Resource(
       );
     }
 
-    const body = new FormData();
-    body.append(
-      "files",
-      new Blob([props.content], { type: "application/javascript" }),
-      "snippet.js",
-    );
-    body.append(
-      "metadata",
-      new Blob([JSON.stringify({ main_module: "snippet.js" })], {
-        type: "application/json",
-      }),
-    );
+    await createOrUpdateSnippet(api, zoneId, props.name, props.content);
 
-    const snippetResponse = await api.put(
-      `/zones/${zoneId}/snippets/${props.name}`,
-      body,
-    );
-
-    if (!snippetResponse.ok) {
-      throw await handleApiError(
-        snippetResponse,
-        exists ? "update" : "create",
-        "snippet",
-        props.name,
-      );
-    }
-
-    const result = await extractCloudflareResult<SnippetResponse>(
-      `get snippet "${props.name}"`,
-      api.get(`/zones/${zoneId}/snippets/${props.name}`),
-    );
+    const result = await getSnippet(api, zoneId, props.name);
 
     return {
       id,
       name: props.name,
+      snippetId: props.name,
       zoneId,
       createdOn: new Date(result.created_on),
       modifiedOn: new Date(result.modified_on),
       delete: props.delete,
+      accountId: props.accountId,
+      apiToken: props.apiToken,
       type: "snippet",
     };
   },
@@ -271,6 +236,7 @@ export const Snippet = Resource(
 
 /**
  * Cloudflare API response format for a snippet
+ * @internal
  */
 interface SnippetResponse {
   created_on: string;
@@ -279,12 +245,59 @@ interface SnippetResponse {
 }
 
 /**
+ * Create or update a snippet
+ * @internal
+ */
+export async function createOrUpdateSnippet(
+  api: CloudflareApi,
+  zoneId: string,
+  snippetName: string,
+  content: string,
+): Promise<void> {
+  const body = new FormData();
+  body.append(
+    "files",
+    new Blob([content], { type: "application/javascript" }),
+    "snippet.js",
+  );
+  body.append(
+    "metadata",
+    new Blob([JSON.stringify({ main_module: "snippet.js" })], {
+      type: "application/json",
+    }),
+  );
+
+  const snippetResponse = await api.put(
+    `/zones/${zoneId}/snippets/${snippetName}`,
+    body,
+  );
+
+  if (!snippetResponse.ok) {
+    await handleApiError(
+      snippetResponse,
+      "create or update",
+      "snippet",
+      snippetName,
+    );
+  }
+}
+
+/**
+ * Check if a snippet exists
+ * @internal
+ */
+export async function snippetExists(
+  api: CloudflareApi,
+  zoneId: string,
+  snippetName: string,
+): Promise<boolean> {
+  const getResponse = await api.get(`/zones/${zoneId}/snippets/${snippetName}`);
+  return getResponse.ok;
+}
+
+/**
  * Get a snippet by name
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @param snippetName The name of the snippet
- * @returns Promise resolving to snippet metadata
+ * @internal
  */
 export async function getSnippet(
   api: CloudflareApi,
@@ -299,11 +312,7 @@ export async function getSnippet(
 
 /**
  * Get the content of a snippet
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @param snippetName The name of the snippet
- * @returns Promise resolving to the snippet content as a string
+ * @internal
  */
 export async function getSnippetContent(
   api: CloudflareApi,
@@ -323,10 +332,7 @@ export async function getSnippetContent(
 
 /**
  * List all snippets in a zone
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @returns Promise resolving to array of snippet metadata
+ * @internal
  */
 export async function listSnippets(
   api: CloudflareApi,
@@ -339,25 +345,26 @@ export async function listSnippets(
 }
 
 /**
- * Delete a snippet
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @param snippetName The name of the snippet to delete
+ * Delete a snippet from Cloudflare
+ * @internal
  */
 export async function deleteSnippet(
   api: CloudflareApi,
   zoneId: string,
   snippetName: string,
 ): Promise<void> {
-  await extractCloudflareResult(
-    `delete snippet "${snippetName}"`,
-    api.delete(`/zones/${zoneId}/snippets/${snippetName}`),
+  const deleteResponse = await api.delete(
+    `/zones/${zoneId}/snippets/${snippetName}`,
   );
+
+  if (!deleteResponse.ok && deleteResponse.status !== 404) {
+    await handleApiError(deleteResponse, "delete", "snippet", snippetName);
+  }
 }
 
 /**
  * Snippet rule response from Cloudflare API
+ * @internal
  */
 interface SnippetRuleResponse {
   id: string;
@@ -371,10 +378,7 @@ interface SnippetRuleResponse {
 
 /**
  * List all snippet rules in a zone
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @returns Promise resolving to array of snippet rules
+ * @internal
  */
 export async function listSnippetRules(
   api: CloudflareApi,
@@ -388,11 +392,7 @@ export async function listSnippetRules(
 
 /**
  * Update snippet rules in a zone
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
- * @param rules Array of snippet rules to set
- * @returns Promise resolving to the updated snippet rules
+ * @internal
  */
 export async function updateSnippetRules(
   api: CloudflareApi,
@@ -414,9 +414,7 @@ export async function updateSnippetRules(
 
 /**
  * Delete all snippet rules in a zone
- *
- * @param api CloudflareApi instance
- * @param zoneId The zone ID
+ * @internal
  */
 export async function deleteSnippetRules(
   api: CloudflareApi,
@@ -424,7 +422,7 @@ export async function deleteSnippetRules(
 ): Promise<void> {
   const response = await api.delete(`/zones/${zoneId}/snippets/snippet_rules`);
 
-  if (!response.ok) {
-    throw await handleApiError(response, "delete", "snippet rules", zoneId);
+  if (!response.ok && response.status !== 404) {
+    await handleApiError(response, "delete", "snippet rules", zoneId);
   }
 }
