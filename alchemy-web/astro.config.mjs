@@ -6,6 +6,7 @@ import icon from "astro-icon";
 import { defineConfig } from "astro/config";
 import starlightBlog from "starlight-blog";
 import starlightLinksValidator from "starlight-links-validator";
+import starlightLlmsTxt from "starlight-llms-txt";
 import theme from "starlight-theme-nova";
 
 // @ts-expect-error
@@ -117,6 +118,18 @@ export default defineConfig({
         }),
         starlightBlog(),
         starlightLinksValidator(),
+        starlightLlmsTxt({
+          promote: [
+            "index",
+            "what-is-alchemy",
+            "getting-started",
+            "!*/*", // pages at the root dir
+            "concepts/**",
+            "guides/**",
+          ],
+          demote: ["providers/**", "blog/**"],
+          exclude: ["telemetry/**"],
+        }),
       ],
     }),
     icon(),
