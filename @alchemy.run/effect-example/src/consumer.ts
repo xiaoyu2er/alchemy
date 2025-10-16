@@ -6,7 +6,7 @@ import { Messages } from "./messages.ts";
 // business logic
 export class Consumer extends SQS.consume(
   Messages,
-  "Consumer",
+  "consumer",
   Effect.fn(function* (batch) {
     for (const record of batch.Records) {
       console.log(record);

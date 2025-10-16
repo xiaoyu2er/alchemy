@@ -7,7 +7,7 @@ export class Message extends S.Struct({
 }) {}
 
 // Declared queue dependency
-export class Messages extends SQS.Queue("Messages", {
+export class Messages extends SQS.Queue("messages", {
   fifo: true,
   schema: Message,
 }) {}
