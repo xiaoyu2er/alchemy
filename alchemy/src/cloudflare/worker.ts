@@ -982,9 +982,11 @@ const _Worker = Resource(
           bundle,
           port: props.dev?.port,
           tunnel: props.dev?.tunnel ?? this.scope.tunnel,
+          cwd: props.cwd ?? process.cwd(),
         });
         this.onCleanup(() => controller.dispose());
       }
+
       await provisionResources(
         {
           ...props,
@@ -1240,11 +1242,17 @@ async function provisionResources<B extends Bindings>(
     containers: options.containers,
     domains: props.domains?.map((domain) => {
       if (typeof domain === "string") {
+        if (domain === "") {
+          throw new Error("Domain names cannot be empty strings");
+        }
         return {
           name: domain,
           zoneId: undefined,
           adopt: props.adopt,
         };
+      }
+      if (domain.domainName === "") {
+        throw new Error("Domain names cannot be empty strings");
       }
       return {
         name: domain.domainName,
@@ -1305,15 +1313,10 @@ async function provisionResources<B extends Bindings>(
         ? Promise.all(
             input.containers.map(async (container) => {
               return await ContainerApplication(container.id, {
-                image: container.image,
-                name: container.name,
-                instanceType: container.instanceType,
-                observability: container.observability,
+                ...container,
                 durableObjects: {
                   namespaceId: await getContainerNamespaceId(container),
                 },
-                schedulingPolicy: container.schedulingPolicy,
-                adopt: container.adopt,
                 dev: options.local,
                 ...input.api,
               });

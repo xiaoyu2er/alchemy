@@ -1,6 +1,8 @@
 // @ts-check
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
+import tailwindcss from "@tailwindcss/vite";
+import icon from "astro-icon";
 import { defineConfig } from "astro/config";
 import starlightBlog from "starlight-blog";
 import starlightLinksValidator from "starlight-links-validator";
@@ -46,19 +48,19 @@ export default defineConfig({
         dark: "./public/alchemy-logo-dark.svg",
         replacesTitle: true,
       },
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/global.css", "./src/styles/custom.css"],
       prerender: true,
       routeMiddleware: "./src/routeData.ts",
       social: [
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/sam-goodwin/alchemy",
+          href: "https://github.com/alchemy-run/alchemy",
         },
         {
-          icon: "twitter",
+          icon: "x.com",
           label: "X",
-          href: "https://twitter.com/samgoodwin89",
+          href: "https://x.com/alchemy_run",
         },
         {
           icon: "discord",
@@ -67,11 +69,12 @@ export default defineConfig({
         },
       ],
       editLink: {
-        baseUrl: "https://github.com/sam-goodwin/alchemy/edit/main/alchemy-web",
+        baseUrl: "https://github.com/alchemy-run/alchemy/edit/main/alchemy-web",
       },
       components: {
         Hero: "./src/components/Hero.astro",
         MarkdownContent: "./src/components/MarkdownContent.astro",
+        PageTitle: "./src/components/docs/PageTitle.astro",
       },
       sidebar: [
         {
@@ -116,5 +119,10 @@ export default defineConfig({
         starlightLinksValidator(),
       ],
     }),
+    icon(),
   ],
+
+  vite: {
+    plugins: [tailwindcss()],
+  },
 });
