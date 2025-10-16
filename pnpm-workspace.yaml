@@ -1,0 +1,13 @@
+packages:
+  - alchemy-web
+  - alchemy
+  - alchemy/templates/*
+  - examples/*
+  - stacks
+
+catalog:
+  "@cloudflare/workers-types": "^4.20250805.0"
+  "@cloudflare/vite-plugin": "^1.13.12"
+  "vite": "^6.3.5"
+  "typescript": "^5.8.3"
+  "wrangler": "^4.42.2"
