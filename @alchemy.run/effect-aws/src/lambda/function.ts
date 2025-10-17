@@ -1,4 +1,5 @@
 import { Binding, Capability, Provider, Runtime } from "@alchemy.run/effect";
+import * as IAM from "../iam.ts";
 
 export const FunctionType = "AWS.Lambda.Function";
 export type FunctionType = typeof FunctionType;
@@ -46,6 +47,6 @@ export interface FunctionBinding<Cap extends Capability.Concrete>
     Cap,
     {
       env: Record<string, string>;
-      policyStatements: any[];
+      policyStatements: IAM.PolicyStatement[];
     }
   > {}
