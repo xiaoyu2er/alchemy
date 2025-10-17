@@ -7,7 +7,7 @@ import {
   type CloudflareApi,
   type CloudflareApiOptions,
 } from "./api.ts";
-import type { Zone } from "./zone.ts";
+import { findZoneForHostname, type Zone } from "./zone.ts";
 
 /**
  * Properties for creating or updating a Snippet
@@ -192,11 +192,16 @@ export const Snippet = Resource(
     id: string,
     props: SnippetProps,
   ): Promise<Snippet> {
+    //* Early validation to prevent HTTP errors
+    validateSnippetName(props.name);
+
     const api = await createCloudflareApi(props);
     const zoneId =
       props.zoneId ||
       this.output?.zoneId ||
-      (typeof props.zone === "string" ? props.zone : props.zone.id);
+      (typeof props.zone === "string"
+        ? (await findZoneForHostname(api, props.zone)).zoneId
+        : props.zone.id);
     const snippetId = props.snippetId || this.output?.snippetId || props.name;
     const adopt = props.adopt ?? this.scope.adopt;
 
@@ -358,6 +363,12 @@ export async function deleteSnippet(
   );
 
   if (!deleteResponse.ok && deleteResponse.status !== 404) {
+    if (deleteResponse.status === 400) {
+      const errorBody = await deleteResponse.text();
+      if (errorBody.includes("requested snippet not found")) {
+        return;
+      }
+    }
     await handleApiError(deleteResponse, "delete", "snippet", snippetName);
   }
 }
@@ -399,12 +410,14 @@ export async function updateSnippetRules(
   zoneId: string,
   rules: SnippetRule[],
 ): Promise<SnippetRuleResponse[]> {
-  const requestBody = rules.map((rule) => ({
-    expression: rule.expression,
-    snippet_name: rule.snippetName,
-    description: rule.description,
-    enabled: rule.enabled ?? true,
-  }));
+  const requestBody = {
+    rules: rules.map((rule) => ({
+      expression: rule.expression,
+      snippet_name: rule.snippetName,
+      description: rule.description,
+      enabled: rule.enabled ?? true,
+    })),
+  };
 
   return await extractCloudflareResult<SnippetRuleResponse[]>(
     `update snippet rules in zone "${zoneId}"`,
@@ -425,4 +438,29 @@ export async function deleteSnippetRules(
   if (!response.ok && response.status !== 404) {
     await handleApiError(response, "delete", "snippet rules", zoneId);
   }
+}
+
+/**
+ * Validates that a snippet name meets Cloudflare requirements due to strong restrictions on the name.
+ * Cloudflare Snippets only allow lowercase letters (a-z), numbers (0-9), and underscores (_)
+ *
+ * @throws Error if the name does not meet Cloudflare snippet requirements
+ * @internal
+ */
+export function validateSnippetName(name: string): boolean {
+  if (!name || name.trim().length === 0) {
+    throw new Error("Snippet name cannot be empty");
+  }
+
+  if (name.length > 255) {
+    throw new Error("Snippet name cannot exceed 255 characters");
+  }
+
+  if (!/^[a-z0-9_]+$/.test(name)) {
+    throw new Error(
+      "Snippet name must contain only lowercase letters (a-z), numbers (0-9), and underscores (_). Invalid characters found.",
+    );
+  }
+
+  return true;
 }

@@ -11,45 +11,47 @@ import {
   updateSnippetRules,
   type SnippetRule,
 } from "../../src/cloudflare/snippet.ts";
-import { Zone } from "../../src/cloudflare/zone.ts";
+import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
 import { BRANCH_PREFIX } from "../util.ts";
 
 import "../../src/test/vitest.ts";
 
+const ZONE_NAME = process.env.TEST_ZONE ?? process.env.ALCHEMY_TEST_DOMAIN!;
+
 const api = await createCloudflareApi();
+const zoneId = (await findZoneForHostname(api, ZONE_NAME)).zoneId;
 
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
 
-// Helper function to create snippet-safe names
-// Cloudflare Snippets only allow a-z, 0-9, and _
-//TODO: The Alchemy resource should validate the name and throw a TypeError & runtime error if it's not valid
 function createSnippetName(base: string): string {
   return base.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
 }
 
-describe("Snippet Resource", () => {
-  const testDomain = `${BRANCH_PREFIX}-snippet-test.dev`;
+async function verifySnippetExists(snippetName: string): Promise<void> {
+  const snippet = await getSnippet(api, zoneId, snippetName);
+  expect(snippet.snippet_name).toEqual(snippetName);
+}
 
+async function verifySnippetDeleted(snippetName: string): Promise<void> {
+  try {
+    await getSnippet(api, zoneId, snippetName);
+    throw new Error("Snippet should have been deleted");
+  } catch (error) {
+    expect(error).toBeTruthy();
+  }
+}
+
+describe("Snippet Resource", () => {
   test("create, update, and delete snippet", async (scope) => {
-    let zone: Zone | undefined;
+    const snippetName = createSnippetName(`${BRANCH_PREFIX}_test_snippet`);
     let snippet: Snippet | undefined;
 
     try {
-      zone = await Zone(testDomain, {
-        name: testDomain,
-        type: "full",
-        jumpStart: false,
-      });
-
-      expect(zone.id).toBeTruthy();
-      expect(zone.name).toEqual(testDomain);
-
-      const snippetName = createSnippetName(`${BRANCH_PREFIX}_test_snippet`);
       snippet = await Snippet(snippetName, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippetName,
         content: `
 export default {
@@ -64,19 +66,18 @@ export default {
 
       expect(snippet.id).toEqual(snippetName);
       expect(snippet.name).toEqual(snippetName);
-      expect(snippet.zoneId).toEqual(zone.id);
+      expect(snippet.zoneId).toEqual(zoneId);
       expect(snippet.createdOn).toBeInstanceOf(Date);
       expect(snippet.modifiedOn).toBeInstanceOf(Date);
 
-      const createdSnippet = await getSnippet(api, zone.id, snippetName);
-      expect(createdSnippet.snippet_name).toEqual(snippetName);
+      await verifySnippetExists(snippetName);
 
-      const content = await getSnippetContent(api, zone.id, snippetName);
+      const content = await getSnippetContent(api, zoneId, snippetName);
       expect(content).toContain("X-Test-Header");
       expect(content).toContain("Hello from Snippet");
 
       snippet = await Snippet(snippetName, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippetName,
         content: `
 export default {
@@ -92,53 +93,32 @@ export default {
 
       expect(snippet.name).toEqual(snippetName);
 
-      const updatedContent = await getSnippetContent(api, zone.id, snippetName);
+      const updatedContent = await getSnippetContent(api, zoneId, snippetName);
       expect(updatedContent).toContain("Updated Content");
       expect(updatedContent).toContain("X-Version");
 
-      const snippets = await listSnippets(api, zone.id);
+      const snippets = await listSnippets(api, zoneId);
       expect(snippets.length).toBeGreaterThan(0);
       const foundSnippet = snippets.find((s) => s.snippet_name === snippetName);
       expect(foundSnippet).toBeTruthy();
     } finally {
       await destroy(scope);
 
-      if (zone && snippet) {
-        try {
-          await getSnippet(api, zone.id, snippet.name);
-          throw new Error("Snippet should have been deleted");
-        } catch (error) {
-          expect(error).toBeTruthy();
-        }
-      }
-
-      if (zone) {
-        const getDeletedResponse = await api.get(`/zones/${zone.id}`);
-        expect(getDeletedResponse.status).toEqual(400);
+      if (snippet) {
+        await verifySnippetDeleted(snippet.name);
       }
     }
   });
 
   test("snippet with rules", async (scope) => {
-    let zone: Zone | undefined;
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_rule_snippet_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_rule_snippet_2`);
     let snippet1: Snippet | undefined;
     let snippet2: Snippet | undefined;
 
     try {
-      const ruleDomain = `${BRANCH_PREFIX}-snippet-rules.dev`;
-      zone = await Zone(ruleDomain, {
-        name: ruleDomain,
-        type: "full",
-        jumpStart: false,
-      });
-
-      expect(zone.id).toBeTruthy();
-
-      const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_rule_snippet_1`);
-      const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_rule_snippet_2`);
-
       snippet1 = await Snippet(snippet1Name, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippet1Name,
         content: `
 export default {
@@ -152,7 +132,7 @@ export default {
       });
 
       snippet2 = await Snippet(snippet2Name, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippet2Name,
         content: `
 export default {
@@ -183,31 +163,23 @@ export default {
         },
       ];
 
-      const createdRules = await updateSnippetRules(api, zone.id, rules);
+      const createdRules = await updateSnippetRules(api, zoneId, rules);
       expect(createdRules.length).toEqual(2);
       expect(createdRules[0].snippet_name).toEqual(snippet1Name);
       expect(createdRules[1].snippet_name).toEqual(snippet2Name);
 
-      await deleteSnippetRules(api, zone.id);
+      await deleteSnippetRules(api, zoneId);
     } finally {
       await destroy(scope);
     }
   });
 
   test("delete snippet explicitly", async (scope) => {
-    let zone: Zone | undefined;
     const snippetName = createSnippetName(`${BRANCH_PREFIX}_delete_test`);
 
     try {
-      const deleteDomain = `${BRANCH_PREFIX}-snippet-delete.dev`;
-      zone = await Zone(deleteDomain, {
-        name: deleteDomain,
-        type: "full",
-        jumpStart: false,
-      });
-
       const snippet = await Snippet(snippetName, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippetName,
         content: `
 export default {
@@ -220,51 +192,36 @@ export default {
 
       expect(snippet.name).toEqual(snippetName);
 
-      const foundSnippet = await getSnippet(api, zone.id, snippetName);
-      expect(foundSnippet.snippet_name).toEqual(snippetName);
+      await verifySnippetExists(snippetName);
 
-      await deleteSnippet(api, zone.id, snippetName);
+      await deleteSnippet(api, zoneId, snippetName);
 
-      try {
-        await getSnippet(api, zone.id, snippetName);
-        throw new Error("Snippet should have been deleted");
-      } catch (error) {
-        expect(error).toBeTruthy();
-      }
+      await verifySnippetDeleted(snippetName);
     } finally {
       await destroy(scope);
     }
   });
 
   test("list snippets in zone", async (scope) => {
-    let zone: Zone | undefined;
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_list_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_list_2`);
 
     try {
-      const listDomain = `${BRANCH_PREFIX}-snippet-list.dev`;
-      zone = await Zone(listDomain, {
-        name: listDomain,
-        type: "full",
-        jumpStart: false,
-      });
-
-      const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_list_1`);
-      const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_list_2`);
-
       await Snippet(snippet1Name, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippet1Name,
         content:
           "export default { async fetch(request) { return fetch(request); } }",
       });
 
       await Snippet(snippet2Name, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippet2Name,
         content:
           "export default { async fetch(request) { return fetch(request); } }",
       });
 
-      const snippets = await listSnippets(api, zone.id);
+      const snippets = await listSnippets(api, zoneId);
       expect(snippets.length).toBeGreaterThanOrEqual(2);
 
       const snippet1 = snippets.find((s) => s.snippet_name === snippet1Name);
@@ -278,19 +235,11 @@ export default {
   });
 
   test("adopt existing snippet", async (scope) => {
-    let zone: Zone | undefined;
     const snippetName = createSnippetName(`${BRANCH_PREFIX}_adopt_test`);
 
     try {
-      const adoptDomain = `${BRANCH_PREFIX}-snippet-adopt.dev`;
-      zone = await Zone(adoptDomain, {
-        name: adoptDomain,
-        type: "full",
-        jumpStart: false,
-      });
-
       const snippet1 = await Snippet(snippetName, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippetName,
         content: `
 export default {
@@ -307,7 +256,7 @@ export default {
 
       try {
         await Snippet(`${snippetName}-2`, {
-          zone: zone.id,
+          zone: ZONE_NAME,
           name: snippetName,
           content: `
 export default {
@@ -327,7 +276,7 @@ export default {
       }
 
       const snippet2 = await Snippet(`${snippetName}-adopted`, {
-        zone: zone.id,
+        zone: ZONE_NAME,
         name: snippetName,
         content: `
 export default {
@@ -343,11 +292,29 @@ export default {
 
       expect(snippet2.name).toEqual(snippetName);
 
-      const adoptedContent = await getSnippetContent(api, zone.id, snippetName);
+      const adoptedContent = await getSnippetContent(api, zoneId, snippetName);
       expect(adoptedContent).toContain("X-Version");
       expect(adoptedContent).toContain("2.0");
     } finally {
       await destroy(scope);
     }
+  });
+
+  test("validate snippet name throws error for invalid characters", async (scope) => {
+    const snippetName = "A@B-1.2";
+    try {
+      await Snippet(snippetName, {
+        zone: ZONE_NAME,
+        name: snippetName,
+        content:
+          "export default { async fetch(request) { return fetch(request); } }",
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain(
+        "Snippet name must contain only lowercase letters (a-z), numbers (0-9), and underscores (_). Invalid characters found.",
+      );
+    }
+    // Should never need to destroy scope since validation happens early and failure results in Snippet HTTP error
   });
 });
