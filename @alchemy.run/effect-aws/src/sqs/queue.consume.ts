@@ -5,7 +5,13 @@ import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
 import { Function } from "../lambda/function.ts";
 
-import { allow, Capability, Resource, Service } from "@alchemy.run/effect";
+import {
+  allow,
+  Capability,
+  Resource,
+  Service,
+  type Policy,
+} from "@alchemy.run/effect";
 import { Queue } from "./queue.ts";
 
 export interface Consume<Resource = unknown>
@@ -30,6 +36,7 @@ export function consume<Q extends Queue, ID extends string, Req = never>(
     event: SQSEvent<Q["props"]["schema"]["Type"]>,
     context: lambda.Context,
   ) => Effect.Effect<lambda.SQSBatchResponse | void, never, Req>,
+  policy?: Policy<Extract<Req, Capability>>,
 ) {
   const schema = queue.props.schema;
   return Service(
@@ -70,22 +77,20 @@ export function consume<Q extends Queue, ID extends string, Req = never>(
 }
 
 export const consumeFromLambdaFunction = () =>
-  Layer.effect(
+  Layer.succeed(
     Function(Consume(Queue)),
-    Effect.gen(function* () {
-      return Function(Consume(Queue)).of({
-        attach: Effect.fn(function* (queue, capability) {
-          return {
-            policyStatements: [
-              {
-                Sid: capability.sid,
-                Effect: "Allow",
-                Action: ["sqs:SendMessage"],
-                Resource: [queue.attr.queueArn],
-              },
-            ],
-          };
-        }),
-      });
+    Function(Consume(Queue)).of({
+      attach: Effect.fn(function* (queue, capability) {
+        return {
+          policyStatements: [
+            {
+              Sid: capability.sid,
+              Effect: "Allow",
+              Action: ["sqs:SendMessage"],
+              Resource: [queue.attr.queueArn],
+            },
+          ],
+        };
+      }),
     }),
   );

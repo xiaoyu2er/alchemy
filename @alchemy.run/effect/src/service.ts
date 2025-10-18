@@ -58,7 +58,8 @@ export const Service = <
     constructor(_: never) {}
   } as Service<ID, Handler, Cap>;
 
-  const obj = Object.assign(svc, eff);
+  // const obj = Object.assign(svc, eff);
+  const obj = svc;
   obj.pipe = eff.pipe.bind(svc);
   return obj;
 };

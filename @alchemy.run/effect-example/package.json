@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@alchemy.run/effect-cli": "workspace:*",
+    "@alchemy.run/effect-cloudflare": "workspace:*",
     "@alchemy.run/effect-aws": "workspace:*",
     "@alchemy.run/effect": "workspace:*",
     "@effect/platform-node": "catalog:",
