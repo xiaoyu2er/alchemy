@@ -1,6 +1,6 @@
 # Alchemy
 
-Alchemy is a Typescript-native Infrastructure-as-Code repository. 
+Alchemy is a Typescript-native Infrastructure-as-Code repository.
 Your job is to implement "Resource" providers for various cloud services by following a set of strict conventions and patterns.
 
 Your job is to build and maintain resource providers following the following convention and structure:
@@ -337,7 +337,7 @@ export const Hyperdrive = Resource(/* ... */);
 
 // ❌ INCORRECT: Interface name doesn't match
 export interface HyperdriveOutput extends Resource<"cloudflare::Hyperdrive"> {
-  // ... properties  
+  // ... properties
 }
 export const Hyperdrive = Resource(/* ... */);
 ```
@@ -355,24 +355,24 @@ export interface MyResourceProps {
    * @default ${app}-${stage}-${id}
    */
   name?: string;
-  
+
   /**
    * Property description
    */
   property: string;
-  
+
   /**
    * Secret value for authentication
    * Use alchemy.secret() to securely store this value
    */
   secret?: string | Secret;
-  
+
   /**
    * Whether to adopt an existing resource
    * @default false
    */
   adopt?: boolean;
-  
+
   // Internal properties for lifecycle management
   /** @internal */
   resourceId?: string;
@@ -385,22 +385,22 @@ export type MyResource = Omit<MyResourceProps, "adopt"> & {
    * The ID of the resource
    */
   id: string;
-  
+
   /**
    * Name of the resource (required in output)
    */
   name: string;
-  
+
   /**
    * The provider-generated ID
    */
   resourceId: string;
-  
+
   /**
    * Secret value (always wrapped in Secret for output)
    */
   secret: Secret;
-  
+
   /**
    * Resource type identifier for binding
    * @internal
@@ -593,7 +593,7 @@ if (error instanceof ApiError && error.code === "ALREADY_EXISTS") {
       { cause: error },
     );
   }
-  
+
   // Find and adopt existing resource
   const existing = await findResourceByName(api, name);
   if (!existing) {
@@ -602,7 +602,7 @@ if (error instanceof ApiError && error.code === "ALREADY_EXISTS") {
       { cause: error },
     );
   }
-  
+
   // Update existing resource with new configuration
   result = await extractApiResult<ApiResponse>(
     `adopt resource "${name}"`,
@@ -641,17 +641,17 @@ export const MyResource = Resource(
       // Handle deletion logic
       return this.destroy();
     }
-    
+
     // Access current resource state
     const currentState = this.output;
-    
+
     // Access scope information
     const isLocal = this.scope.local;
     const adopt = props.adopt ?? this.scope.adopt;
-    
+
     // Create physical names using scope
     const name = props.name ?? this.scope.createPhysicalName(id);
-    
+
     // Handle different phases
     if (this.phase === "update" && currentState) {
       // Update existing resource
@@ -660,7 +660,7 @@ export const MyResource = Resource(
         throw new Error("Cannot change immutable property 'name'");
       }
     }
-    
+
     // Phase-specific logic
     switch (this.phase) {
       case "create":
@@ -753,6 +753,36 @@ test("end-to-end workflow", async (scope) => {
 
 - **Minimize cross-resource dependencies**: Resources should be as independent as possible
 - **Clear separation of concerns**: Keep API calls, validation, and business logic separate
+
+## Performance Best Practices
+
+### Asynchronous I/O
+
+- **Never use synchronous I/O**: Always use async/await for file operations, network requests, and any I/O operations
+- **Blocking the event loop is cancer**: Synchronous operations block the entire event loop and harm application performance
+
+```ts
+// ❌ DON'T: Synchronous I/O
+const data = fs.readFileSync('file.txt');
+
+// ✅ DO: Asynchronous I/O
+const data = await fs.promises.readFile('file.txt');
+```
+
+for mapping over arrays, use `Promise.all` instead of a `for` loop:
+
+```ts
+// ❌ DON'T: for loop
+for (const item of items) {
+  await fs.existsSync(item);
+}
+
+import { exists } from "../utils/exists.ts";
+// ✅ DO: Promise.all
+await Promise.all(items.map(
+  async (item) => await exists(item)
+));
+```
 
 ## Alchemy.run Patterns
 
@@ -847,13 +877,7 @@ const resource = await MyResource("id", props);
 Before committing changes to Git and pushing Pull Requests, make sure to run the following commands to ensure the code is working:
 
 ```sh
-bun biome check --fix
-```
-
-If that fails, consider running (but be careful):
-
-```sh
-bun biome check --fix --unsafe
+bun format
 ```
 
 Then run tests:
