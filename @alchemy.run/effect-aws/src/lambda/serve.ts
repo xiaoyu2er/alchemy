@@ -1,4 +1,4 @@
-import { Service } from "@alchemy.run/effect";
+import { Capability, Service, type Policy } from "@alchemy.run/effect";
 import * as Effect from "effect/Effect";
 
 import type {
@@ -9,8 +9,9 @@ import type {
 
 export const serve = <const ID extends string, Req>(
   id: ID,
+  policy: Policy<Extract<Req, Capability>>,
   handler: (
     event: LambdaFunctionURLEvent,
     context: LambdaContext,
   ) => Effect.Effect<LambdaFunctionURLResult, never, Req>,
-) => Service(id, handler);
+) => Service(id, handler, policy);

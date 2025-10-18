@@ -66,10 +66,9 @@ export interface ResourceClass<R extends Resource = Resource> {
 type IsEmptyObject<T> = keyof T extends never ? true : false;
 
 export declare namespace Resource {
+  // TODO(sam): this is a mess
   export type Instance<R> = R extends { kind: "Resource" }
-    ? R extends new (
-        _: never,
-      ) => infer I
+    ? R extends new (_: never) => infer I
       ? IsEmptyObject<I> extends true
         ? R
         : I
@@ -81,13 +80,9 @@ export declare namespace Resource {
       ? R["resource"]
       : R extends (...args: any[]) => infer I
         ? I
-        : R extends new (
-              ...args: any[]
-            ) => infer I
+        : R extends new (...args: any[]) => infer I
           ? I
-          : R extends new (
-                _: never,
-              ) => infer I
+          : R extends new (_: never) => infer I
             ? I
             : R;
 }

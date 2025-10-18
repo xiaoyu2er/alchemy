@@ -5,3 +5,4 @@ export * from "./queue.send-message.ts";
 export * from "./queue.ts";
 
 export type * as lambda from "aws-lambda";
+export type * as sqs from "itty-aws/sqs";

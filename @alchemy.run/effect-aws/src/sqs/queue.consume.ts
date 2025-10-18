@@ -5,13 +5,7 @@ import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
 import { Function } from "../lambda/function.ts";
 
-import {
-  allow,
-  Capability,
-  Resource,
-  Service,
-  type Policy,
-} from "@alchemy.run/effect";
+import { Capability, Service, type Policy } from "@alchemy.run/effect";
 import { Queue } from "./queue.ts";
 
 export interface Consume<Resource = unknown>
@@ -32,17 +26,16 @@ export type SQSEvent<Data> = Omit<lambda.SQSEvent, "Records"> & {
 export function consume<Q extends Queue, ID extends string, Req = never>(
   queue: Q,
   id: ID,
+  policy: Policy<Extract<Req, Capability>>,
   handler: (
     event: SQSEvent<Q["props"]["schema"]["Type"]>,
     context: lambda.Context,
   ) => Effect.Effect<lambda.SQSBatchResponse | void, never, Req>,
-  policy?: Policy<Extract<Req, Capability>>,
 ) {
   const schema = queue.props.schema;
   return Service(
     id,
     Effect.fn(function* (event: lambda.SQSEvent, context: lambda.Context) {
-      yield* allow<Consume<Resource.Instance<Q>>>();
       const records = yield* Effect.all(
         event.Records.map(
           Effect.fn(function* (record) {
@@ -72,6 +65,7 @@ export function consume<Q extends Queue, ID extends string, Req = never>(
         ],
       } satisfies lambda.SQSBatchResponse;
     }),
+    policy,
     Consume(queue),
   );
 }

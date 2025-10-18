@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as util from "util";
 import { Capability } from "./capability.ts";
-import type { Policy } from "./policy.ts";
 import type { Resource } from "./resource.ts";
 import type { Runtime } from "./runtime.ts";
 import { Service } from "./service.ts";
@@ -21,12 +20,12 @@ export const bind = <
 >(
   Run: Run,
   Svc: Svc,
-  Policy: Policy<
-    Extract<
-      Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
-      Capability
-    >
-  >,
+  // Policy: Policy<
+  //   Extract<
+  //     Svc["capability"] | Effect.Effect.Context<ReturnType<Svc["impl"]>>,
+  //     Capability
+  //   >
+  // >,
   Props: Props,
 ) => {
   type Cap = Extract<
@@ -63,7 +62,7 @@ export const bind = <
       ...Run,
       id: Svc.id,
       service: Svc,
-      capability: Policy?.capabilities as any,
+      capability: Svc.policy?.capabilities as any,
       parent: Run,
       props: Props,
     };

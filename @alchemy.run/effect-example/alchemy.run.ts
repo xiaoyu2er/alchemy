@@ -1,21 +1,19 @@
 import * as Alchemy from "@alchemy.run/effect";
-import { Bindings } from "@alchemy.run/effect";
 import * as AWS from "@alchemy.run/effect-aws";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
-import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as AlchemyCLI from "@alchemy.run/effect-cli";
 import { FetchHttpClient } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import * as Effect from "effect/Effect";
 import { join } from "node:path";
-import { Api, Consumer, Messages } from "./src/index.ts";
+import { Api, Consumer } from "./src/index.ts";
 
 const src = join(import.meta.dirname, "src");
 
 const api = Alchemy.bind(
   Lambda.Function,
   Api,
-  Bindings(SQS.SendMessage(Messages)),
+  // Bindings(SQS.SendMessage(Messages)),
   {
     main: join(src, "api.ts"),
     url: true,
@@ -25,7 +23,7 @@ const api = Alchemy.bind(
 const consumer = Alchemy.bind(
   Lambda.Function,
   Consumer,
-  Bindings(SQS.Consume(Messages), SQS.SendMessage(Messages)),
+  // Bindings(SQS.Consume(Messages)),
   {
     main: join(src, "consumer.ts"),
   },

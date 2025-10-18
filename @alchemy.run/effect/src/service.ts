@@ -1,10 +1,11 @@
 import * as Effect from "effect/Effect";
 import type { Capability } from "./capability.ts";
+import type { Policy } from "./policy.ts";
 import type { ResourceID } from "./resource.ts";
 
 export type ServiceHandler = (
   ...inputs: any[]
-) => Effect.Effect<any, never, any>;
+) => Effect.Effect<any, never, unknown>;
 
 export type Service<
   ID extends ResourceID = ResourceID,
@@ -15,6 +16,9 @@ export type Service<
   id: ID;
   impl: Handler;
   capability: Cap;
+  policy: Policy<
+    Extract<Effect.Effect.Context<ReturnType<Handler>>, Capability>
+  >;
   new (_: never): Service<ID, Handler, Cap>;
 };
 
@@ -25,6 +29,9 @@ export const Service = <
 >(
   id: ID,
   impl: Handler,
+  policy: Policy<
+    Extract<Effect.Effect.Context<ReturnType<Handler>>, Capability>
+  >,
   capability?: Cap,
 ) => {
   type HandlerEffect = ReturnType<Handler>;
@@ -50,11 +57,13 @@ export const Service = <
     static readonly id = id;
     static readonly impl = impl;
     static readonly capability = capability;
+    static readonly policy = policy;
 
     readonly kind = "Service";
     readonly id = id;
     readonly impl = impl;
     readonly capability = capability;
+    readonly policy = policy;
     constructor(_: never) {}
   } as Service<ID, Handler, Cap>;
 
