@@ -1,3 +1,14 @@
+## v0.75.1
+
+### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
+
+- **cloudflare**: Use workspace root for persist path &nbsp;-&nbsp; by **John Royal** in https://github.com/alchemy-run/alchemy/issues/1143 [<samp>(5d094)</samp>](https://github.com/alchemy-run/alchemy/commit/5d0940f8)
+- **core**: Warn if a resource isn't stable after 10s in a monorepo &nbsp;-&nbsp; by **Sam Goodwin** in https://github.com/alchemy-run/alchemy/issues/1141 [<samp>(66333)</samp>](https://github.com/alchemy-run/alchemy/commit/663331d0)
+
+##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes on GitHub](https://github.com/alchemy-run/alchemy/compare/v0.75.0...v0.75.1)
+
+---
+
 ## v0.75.0
 
 ### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
