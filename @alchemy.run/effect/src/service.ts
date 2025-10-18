@@ -16,9 +16,9 @@ export type Service<
   id: ID;
   impl: Handler;
   capability: Cap;
-  policy: Policy<
-    Extract<Effect.Effect.Context<ReturnType<Handler>>, Capability>
-  >;
+  // policy: Policy<
+  //   Extract<Effect.Effect.Context<ReturnType<Handler>>, Capability>
+  // >;
   new (_: never): Service<ID, Handler, Cap>;
 };
 
@@ -57,13 +57,13 @@ export const Service = <
     static readonly id = id;
     static readonly impl = impl;
     static readonly capability = capability;
-    static readonly policy = policy;
+    // static readonly policy = policy;
 
     readonly kind = "Service";
     readonly id = id;
     readonly impl = impl;
     readonly capability = capability;
-    readonly policy = policy;
+    // readonly policy = policy;
     constructor(_: never) {}
   } as Service<ID, Handler, Cap>;
 

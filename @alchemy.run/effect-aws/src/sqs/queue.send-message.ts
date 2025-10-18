@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { allow, Capability, type Resource } from "@alchemy.run/effect";
-import { Function } from "../lambda/index.ts";
+import { FunctionRuntime } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
 import { Queue } from "./queue.ts";
 
@@ -31,8 +31,8 @@ export const sendMessage = <Q extends Queue>(
 
 export const sendMessageFromLambdaFunction = () =>
   Layer.succeed(
-    Function(SendMessage(Queue)),
-    Function(SendMessage(Queue)).of({
+    FunctionRuntime(SendMessage(Queue)),
+    FunctionRuntime(SendMessage(Queue)).of({
       attach: Effect.fn(function* (queue, capability) {
         return {
           env: {

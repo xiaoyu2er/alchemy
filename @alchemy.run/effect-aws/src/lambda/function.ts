@@ -1,3 +1,4 @@
+import * as Alchemy from "@alchemy.run/effect";
 import { Binding, Capability, Provider, Runtime } from "@alchemy.run/effect";
 import * as IAM from "../iam.ts";
 
@@ -24,26 +25,37 @@ export type FunctionAttr<Props extends FunctionProps = FunctionProps> = {
   };
 };
 
-export interface Function<svc = unknown, cap = unknown, props = FunctionProps>
-  extends Runtime<FunctionType, svc, cap, props> {
+export interface FunctionRuntime<
+  svc = unknown,
+  cap = unknown,
+  props = FunctionProps,
+> extends Runtime<FunctionType, svc, cap, props> {
   readonly Provider: FunctionProvider;
   readonly Binding: FunctionBinding<this["capability"]>;
-  readonly Instance: Function<
+  readonly Instance: FunctionRuntime<
     this["service"],
     this["capability"],
     this["props"]
   >;
   readonly attr: FunctionAttr<Extract<this["props"], FunctionProps>>;
 }
-export const Function = Runtime(FunctionType)<Function>();
+export const FunctionRuntime = Runtime(FunctionType)<FunctionRuntime>();
+
+export const Function = <
+  S extends Alchemy.Service,
+  const Props extends FunctionProps,
+>(
+  service: S,
+  props: Props,
+) => Alchemy.bind(FunctionRuntime, service, props);
 
 export type FunctionProvider = Provider<
-  Function<unknown, unknown, FunctionProps>
+  FunctionRuntime<unknown, unknown, FunctionProps>
 >;
 
 export interface FunctionBinding<Cap extends Capability.Concrete>
   extends Binding<
-    Function,
+    FunctionRuntime,
     Cap,
     {
       env: Record<string, string>;

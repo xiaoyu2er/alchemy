@@ -11,6 +11,16 @@ class Message extends S.Class<Message>("Message")({
   value: S.String,
 }) {}
 
+const route1 = <M extends SQS.Queue>(Messages: M) =>
+  Effect.gen(function* () {
+    // SQS.SendMessage(Messages)
+    yield* SQS.sendMessage(Messages, {
+      id: 1,
+      value: "1",
+    }).pipe(Effect.catchAll(() => Effect.void));
+  });
+//
+
 const Monitor = <const ID extends string, const Req>(
   id: ID,
   policy: Policy<Extract<Req, Capability>>,
@@ -26,10 +36,7 @@ const Monitor = <const ID extends string, const Req>(
     id,
     Bindings(SQS.SendMessage(Messages), ...policy.capabilities),
     Effect.fn(function* (batch) {
-      yield* SQS.sendMessage(Messages, {
-        id: 1,
-        value: "1",
-      }).pipe(Effect.catchAll(() => Effect.void));
+      yield* route1(Messages);
       return yield* handler(batch);
     }),
   );
@@ -64,7 +71,7 @@ export const handler2 = MyMonitor.pipe(
 // });
 
 const func = Alchemy.bind(
-  Lambda.Function,
+  Lambda.FunctionRuntime,
   MyMonitor,
   // TODO: go away
   // Alchemy.Bindings(SQS.SendMessage(Outer)),

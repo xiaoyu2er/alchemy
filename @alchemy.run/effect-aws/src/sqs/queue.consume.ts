@@ -3,7 +3,7 @@ import type * as lambda from "aws-lambda";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as S from "effect/Schema";
-import { Function } from "../lambda/function.ts";
+import { FunctionRuntime } from "../lambda/function.ts";
 
 import { Capability, Service, type Policy } from "@alchemy.run/effect";
 import { Queue } from "./queue.ts";
@@ -72,8 +72,8 @@ export function consume<Q extends Queue, ID extends string, Req = never>(
 
 export const consumeFromLambdaFunction = () =>
   Layer.succeed(
-    Function(Consume(Queue)),
-    Function(Consume(Queue)).of({
+    FunctionRuntime(Consume(Queue)),
+    FunctionRuntime(Consume(Queue)).of({
       attach: Effect.fn(function* (queue, capability) {
         return {
           policyStatements: [

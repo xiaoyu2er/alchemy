@@ -10,24 +10,14 @@ import { Api, Consumer } from "./src/index.ts";
 
 const src = join(import.meta.dirname, "src");
 
-const api = Alchemy.bind(
-  Lambda.Function,
-  Api,
-  // Bindings(SQS.SendMessage(Messages)),
-  {
-    main: join(src, "api.ts"),
-    url: true,
-  },
-);
+const api = Lambda.Function(Api, {
+  main: join(src, "api.ts"),
+  url: true,
+});
 
-const consumer = Alchemy.bind(
-  Lambda.Function,
-  Consumer,
-  // Bindings(SQS.Consume(Messages)),
-  {
-    main: join(src, "consumer.ts"),
-  },
-);
+const consumer = Lambda.Function(Consumer, {
+  main: join(src, "consumer.ts"),
+});
 
 const plan = Alchemy.plan({
   phase: process.argv.includes("--destroy") ? "destroy" : "update",
