@@ -68,9 +68,10 @@ export const bind = <
     };
     return {
       ...(Object.fromEntries(
-        // @ts-expect-error
-        Policy?.capabilities.map((cap) => [cap.resource.id, cap.resource]) ??
-          [],
+        Svc.policy?.capabilities.map((cap: any) => [
+          cap.resource.id,
+          cap.resource,
+        ]) ?? [],
       ) as {
         // @ts-expect-error
         [id in Cap["resource"]["id"]]: Extract<Cap["resource"], { id: id }>;

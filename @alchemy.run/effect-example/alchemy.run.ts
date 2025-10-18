@@ -6,6 +6,7 @@ import { FetchHttpClient } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import * as Effect from "effect/Effect";
 import { join } from "node:path";
+import { MyMonitor } from "./src/component.ts";
 import { Api, Consumer } from "./src/index.ts";
 
 const src = join(import.meta.dirname, "src");
@@ -19,9 +20,13 @@ const consumer = Lambda.Function(Consumer, {
   main: join(src, "consumer.ts"),
 });
 
+const monitor = Lambda.Function(MyMonitor, {
+  main: join(src, "component.ts"),
+});
+
 const plan = Alchemy.plan({
   phase: process.argv.includes("--destroy") ? "destroy" : "update",
-  resources: [api, consumer],
+  resources: [api, consumer, monitor],
 });
 
 const stack = await plan.pipe(

@@ -1,3 +1,4 @@
+import { Bindings } from "@alchemy.run/effect";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as Effect from "effect/Effect";
@@ -7,6 +8,7 @@ import { Messages } from "./messages.ts";
 export class Consumer extends SQS.consume(
   Messages,
   "consumer",
+  Bindings(SQS.SendMessage(Messages)),
   Effect.fn(function* (batch) {
     for (const record of batch.Records) {
       console.log(record);

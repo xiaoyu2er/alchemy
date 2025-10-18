@@ -1,4 +1,3 @@
-import * as Alchemy from "@alchemy.run/effect";
 import { Bindings, Capability, type Policy } from "@alchemy.run/effect";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
@@ -43,7 +42,7 @@ const Monitor = <const ID extends string, const Req>(
 };
 
 // src/my-api.ts
-class Outer extends SQS.Queue("outer", {
+class Outer extends SQS.Queue("Outer", {
   fifo: true,
   schema: Message,
 }) {}
@@ -60,27 +59,7 @@ export class MyMonitor extends Monitor(
   }),
 ) {}
 
-export const handler2 = MyMonitor.pipe(
-  Effect.provide(SQS.clientFromEnv()),
-  Lambda.toHandler,
-);
-
-// const Func = Lambda.Function("MyMonitor", {
-//   service: MyMonitor,
-//   main: import.meta.filename,
-// });
-
-const func = Alchemy.bind(
-  Lambda.FunctionRuntime,
-  MyMonitor,
-  // TODO: go away
-  // Alchemy.Bindings(SQS.SendMessage(Outer)),
-  {
-    main: import.meta.filename,
-  },
-);
-
-export const handler = MyMonitor.pipe(
+export default MyMonitor.pipe(
   Effect.provide(SQS.clientFromEnv()),
   Lambda.toHandler,
 );
