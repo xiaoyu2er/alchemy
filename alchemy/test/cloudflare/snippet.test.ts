@@ -4,13 +4,15 @@ import { createCloudflareApi } from "../../src/cloudflare/api.ts";
 import {
   Snippet,
   deleteSnippet,
-  deleteSnippetRules,
   getSnippet,
   getSnippetContent,
   listSnippets,
-  updateSnippetRules,
-  type SnippetRule,
 } from "../../src/cloudflare/snippet.ts";
+import {
+  deleteSnippetRules,
+  type SnippetRuleInput,
+  updateSnippetRules,
+} from "../../src/cloudflare/snippet-rule.ts";
 import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
 import { BRANCH_PREFIX } from "../util.ts";
@@ -53,7 +55,7 @@ describe("Snippet Resource", () => {
       snippet = await Snippet(snippetName, {
         zone: ZONE_NAME,
         name: snippetName,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -79,7 +81,7 @@ export default {
       snippet = await Snippet(snippetName, {
         zone: ZONE_NAME,
         name: snippetName,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -120,7 +122,7 @@ export default {
       snippet1 = await Snippet(snippet1Name, {
         zone: ZONE_NAME,
         name: snippet1Name,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -134,7 +136,7 @@ export default {
       snippet2 = await Snippet(snippet2Name, {
         zone: ZONE_NAME,
         name: snippet2Name,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -148,7 +150,7 @@ export default {
       expect(snippet1.name).toEqual(snippet1Name);
       expect(snippet2.name).toEqual(snippet2Name);
 
-      const rules: SnippetRule[] = [
+      const rules: SnippetRuleInput[] = [
         {
           expression: 'http.request.uri.path eq "/api"',
           snippetName: snippet1Name,
@@ -181,7 +183,7 @@ export default {
       const snippet = await Snippet(snippetName, {
         zone: ZONE_NAME,
         name: snippetName,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     return fetch(request);
@@ -210,14 +212,14 @@ export default {
       await Snippet(snippet1Name, {
         zone: ZONE_NAME,
         name: snippet1Name,
-        content:
+        script:
           "export default { async fetch(request) { return fetch(request); } }",
       });
 
       await Snippet(snippet2Name, {
         zone: ZONE_NAME,
         name: snippet2Name,
-        content:
+        script:
           "export default { async fetch(request) { return fetch(request); } }",
       });
 
@@ -241,7 +243,7 @@ export default {
       const snippet1 = await Snippet(snippetName, {
         zone: ZONE_NAME,
         name: snippetName,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -258,7 +260,7 @@ export default {
         await Snippet(`${snippetName}-2`, {
           zone: ZONE_NAME,
           name: snippetName,
-          content: `
+          script: `
 export default {
   async fetch(request) {
     return fetch(request);
@@ -278,7 +280,7 @@ export default {
       const snippet2 = await Snippet(`${snippetName}-adopted`, {
         zone: ZONE_NAME,
         name: snippetName,
-        content: `
+        script: `
 export default {
   async fetch(request) {
     const response = await fetch(request);
@@ -300,13 +302,13 @@ export default {
     }
   });
 
-  test("validate snippet name throws error for invalid characters", async (scope) => {
+  test("validate snippet name throws error for invalid characters", async () => {
     const snippetName = "A@B-1.2";
     try {
       await Snippet(snippetName, {
         zone: ZONE_NAME,
         name: snippetName,
-        content:
+        script:
           "export default { async fetch(request) { return fetch(request); } }",
       });
     } catch (error) {

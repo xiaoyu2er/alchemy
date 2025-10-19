@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import { handleApiError } from "./api-error.ts";
@@ -20,74 +22,39 @@ export interface SnippetProps extends CloudflareApiOptions {
 
   /**
    * The identifying name of the snippet
-   * Must be unique within the zone
    * Only lowercase letters (a-z), numbers (0-9), and underscores (_) are allowed
+   *
+   * @default ${app}-${stage}-${id} (with dashes converted to underscores)
    */
-  name: string;
+  name?: string;
 
   /**
-   * The JavaScript code content of the snippet
+   * The JavaScript code content of the snippet (inline)
+   * Either script or entrypoint must be provided
    */
-  content: string;
+  script?: undefined | string;
 
   /**
-   * Whether to delete the snippet
-   * If set to false, the snippet will remain but the resource will be removed from state
-   * @default true
+   * Path to the JavaScript file containing the snippet code
+   * Either script or entrypoint must be provided
    */
-  delete?: boolean;
+  entrypoint?: string;
 
   /**
    * Whether to adopt an existing snippet
    * @default false
    */
   adopt?: boolean;
-
-  /**
-   * The Cloudflare-generated zone ID (only used for update/delete operations)
-   * @internal
-   */
-  zoneId?: string;
-
-  /**
-   * The snippet name (only used for update/delete operations)
-   * @internal
-   */
-  snippetId?: string;
-}
-
-/**
- * Snippet rule for controlling when a snippet executes
- */
-export interface SnippetRule {
-  /**
-   * The expression that defines when this rule applies
-   * Uses Cloudflare's Rules language
-   */
-  expression: string;
-
-  /**
-   * The name of the snippet to execute when this rule matches
-   */
-  snippetName: string;
-
-  /**
-   * Description of what this rule does
-   */
-  description?: string;
-
-  /**
-   * Whether this rule is enabled
-   * @default true
-   */
-  enabled?: boolean;
 }
 
 /**
  * Output returned after Snippet creation/update.
  * IMPORTANT: The type name MUST match the exported resource name.
  */
-export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
+export type Snippet = Omit<
+  SnippetProps,
+  "zone" | "script" | "entrypoint" | "adopt"
+> & {
   /**
    * The ID of the resource
    */
@@ -105,7 +72,7 @@ export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
   snippetId: string;
 
   /**
-   * The zone ID this snippet belongs to
+   * Zone ID for the domain.
    */
   zoneId: string;
 
@@ -132,12 +99,14 @@ export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
  * Snippets allow you to run custom JavaScript code on Cloudflare's edge network,
  * enabling modifications to requests and responses for your zone.
  *
+ * After creating Snippets, use the SnippetRule resource to define when each snippet should execute.
+ * A Snippet without any associated rules will not be executed.
+ *
  * @example
- * // Create a basic snippet that adds a custom header
+ * // Create a basic snippet with inline script that adds a custom header:
  * const headerSnippet = await Snippet("custom-header", {
  *   zone: myZone,
- *   name: "add-custom-header",
- *   content: `
+ *   script: `
  *     export default {
  *       async fetch(request) {
  *         const response = await fetch(request);
@@ -149,11 +118,17 @@ export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
  * });
  *
  * @example
- * // Create a snippet that modifies request URLs
+ * // Create a snippet from a file entrypoint:
+ * const fileSnippet = await Snippet("my-snippet", {
+ *   zone: "example.com",
+ *   entrypoint: "./src/snippets/header-modifier.js"
+ * });
+ *
+ * @example
+ * // Create a snippet that modifies request URLs with auto-generated name:
  * const urlRewriteSnippet = await Snippet("url-rewrite", {
  *   zone: "example.com",
- *   name: "rewrite-api-urls",
- *   content: `
+ *   script: `
  *     export default {
  *       async fetch(request) {
  *         const url = new URL(request.url);
@@ -167,11 +142,11 @@ export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
  * });
  *
  * @example
- * // Create a snippet for A/B testing
+ * // Create a snippet for A/B testing with explicit name:
  * const abTestSnippet = await Snippet("ab-test", {
  *   zone: myZone,
- *   name: "ab-testing",
- *   content: `
+ *   name: "ab_testing",
+ *   script: `
  *     export default {
  *       async fetch(request) {
  *         const variant = Math.random() < 0.5 ? 'A' : 'B';
@@ -183,7 +158,31 @@ export type Snippet = Omit<SnippetProps, "zone" | "content" | "adopt"> & {
  *   `
  * });
  *
+ * @example
+ * // Create a snippet with associated execution rules:
+ * import { SnippetRule } from "./snippet-rule.ts";
+ *
+ * const apiSnippet = await Snippet("api-processor", {
+ *   zone: myZone,
+ *   script: `
+ *     export default {
+ *       async fetch(request) {
+ *         return fetch(request);
+ *       }
+ *     }
+ *   `
+ * });
+ *
+ * // Create a rule to execute this snippet only on /api paths
+ * const apiRule = await SnippetRule("api-rule", {
+ *   zone: myZone,
+ *   snippet: apiSnippet,
+ *   expression: 'http.request.uri.path starts_with "/api"',
+ *   enabled: true
+ * });
+ *
  * @see https://developers.cloudflare.com/rules/snippets/
+ * @see SnippetRule - Use this resource to define when snippets should execute
  */
 export const Snippet = Resource(
   "cloudflare::Snippet",
@@ -192,52 +191,67 @@ export const Snippet = Resource(
     id: string,
     props: SnippetProps,
   ): Promise<Snippet> {
+    const name =
+      props.name ?? this.output?.name ?? this.scope.createPhysicalName(id, "_");
+
     //* Early validation to prevent HTTP errors
-    validateSnippetName(props.name);
+    validateSnippetName(name);
 
     const api = await createCloudflareApi(props);
     const zoneId =
-      props.zoneId ||
       this.output?.zoneId ||
       (typeof props.zone === "string"
         ? (await findZoneForHostname(api, props.zone)).zoneId
         : props.zone.id);
-    const snippetId = props.snippetId || this.output?.snippetId || props.name;
+    const snippetId = this.output?.snippetId || name;
     const adopt = props.adopt ?? this.scope.adopt;
 
     if (this.phase === "delete") {
-      if (props.delete !== false && snippetId) {
-        await deleteSnippet(api, zoneId, snippetId);
-      }
+      await deleteSnippet(api, zoneId, snippetId);
       return this.destroy();
     }
 
-    const exists = await snippetExists(api, zoneId, props.name);
+    const content = await getScriptContent(props);
+    const exists = await snippetExists(api, zoneId, name);
 
     if (this.phase === "create" && exists && !adopt) {
       throw new Error(
-        `Snippet "${props.name}" already exists. Use adopt: true to adopt it.`,
+        `Snippet "${name}" already exists. Use adopt: true to adopt it.`,
       );
     }
 
-    await createOrUpdateSnippet(api, zoneId, props.name, props.content);
+    await createOrUpdateSnippet(api, zoneId, name, content);
 
-    const result = await getSnippet(api, zoneId, props.name);
+    const result = await getSnippet(api, zoneId, name);
 
     return {
       id,
-      name: props.name,
-      snippetId: props.name,
+      name,
+      snippetId: name,
       zoneId,
       createdOn: new Date(result.created_on),
       modifiedOn: new Date(result.modified_on),
-      delete: props.delete,
       accountId: props.accountId,
       apiToken: props.apiToken,
       type: "snippet",
     };
   },
 );
+
+/**
+ * Get script content from either inline script or file entrypoint
+ * @internal
+ */
+async function getScriptContent(props: SnippetProps): Promise<string> {
+  if ("script" in props && props.script) {
+    return props.script;
+  }
+  if ("entrypoint" in props && props.entrypoint) {
+    const filePath = resolve(props.entrypoint);
+    return await readFile(filePath, "utf-8");
+  }
+  throw new Error("Either 'script' or 'entrypoint' must be provided");
+}
 
 /**
  * Cloudflare API response format for a snippet
@@ -370,73 +384,6 @@ export async function deleteSnippet(
       }
     }
     await handleApiError(deleteResponse, "delete", "snippet", snippetName);
-  }
-}
-
-/**
- * Snippet rule response from Cloudflare API
- * @internal
- */
-interface SnippetRuleResponse {
-  id: string;
-  expression: string;
-  snippet_name: string;
-  description?: string;
-  enabled: boolean;
-  last_updated: string;
-  version: string;
-}
-
-/**
- * List all snippet rules in a zone
- * @internal
- */
-export async function listSnippetRules(
-  api: CloudflareApi,
-  zoneId: string,
-): Promise<SnippetRuleResponse[]> {
-  return await extractCloudflareResult<SnippetRuleResponse[]>(
-    `list snippet rules in zone "${zoneId}"`,
-    api.get(`/zones/${zoneId}/snippets/snippet_rules`),
-  );
-}
-
-/**
- * Update snippet rules in a zone
- * @internal
- */
-export async function updateSnippetRules(
-  api: CloudflareApi,
-  zoneId: string,
-  rules: SnippetRule[],
-): Promise<SnippetRuleResponse[]> {
-  const requestBody = {
-    rules: rules.map((rule) => ({
-      expression: rule.expression,
-      snippet_name: rule.snippetName,
-      description: rule.description,
-      enabled: rule.enabled ?? true,
-    })),
-  };
-
-  return await extractCloudflareResult<SnippetRuleResponse[]>(
-    `update snippet rules in zone "${zoneId}"`,
-    api.put(`/zones/${zoneId}/snippets/snippet_rules`, requestBody),
-  );
-}
-
-/**
- * Delete all snippet rules in a zone
- * @internal
- */
-export async function deleteSnippetRules(
-  api: CloudflareApi,
-  zoneId: string,
-): Promise<void> {
-  const response = await api.delete(`/zones/${zoneId}/snippets/snippet_rules`);
-
-  if (!response.ok && response.status !== 404) {
-    await handleApiError(response, "delete", "snippet rules", zoneId);
   }
 }
 

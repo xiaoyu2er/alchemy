@@ -60,6 +60,7 @@ export * from "./secret-ref.ts";
 export * from "./secret.ts";
 export * from "./secrets-store.ts";
 export * from "./snippet.ts";
+export * from "./snippet-rule.ts";
 export * from "./state.ts";
 export * from "./sveltekit/sveltekit.ts";
 export * from "./tanstack-start/tanstack-start.ts";
