@@ -292,7 +292,14 @@ export const SnippetRule = Resource(
 );
 
 /**
- * Delete a snippet rule from a zone by its ID
+ * Removes a snippet rule identified by its ruleId from the specified zone.
+ *
+ * If the rule is the only snippet rule remaining, all snippet rules for the zone are deleted; otherwise the rule is removed and the remaining rules are updated.
+ *
+ * @param api - Cloudflare API client used to list and modify snippet rules
+ * @param zoneId - Zone identifier containing the snippet rule
+ * @param ruleId - Identifier of the snippet rule to remove
+ * @throws Errors encountered while listing, updating, or deleting rules are logged and rethrown
  * @internal
  */
 async function deleteSnippetRuleById(
@@ -343,8 +350,10 @@ async function deleteSnippetRuleById(
 }
 
 /**
- * List all snippet rules in a zone
+ * Retrieve the snippet rules configured for the given zone.
+ *
  * @internal
+ * @returns An array of `SnippetRuleResponse` objects representing the zone's snippet rules.
  */
 export async function listSnippetRules(
   api: CloudflareApi,
@@ -357,7 +366,11 @@ export async function listSnippetRules(
 }
 
 /**
- * Update snippet rules in a zone (replaces all rules)
+ * Replace all snippet rules for a Cloudflare zone with the provided set of rules.
+ *
+ * @param zoneId - The target zone identifier
+ * @param rules - Array of snippet rule inputs; each item should include `expression`, `snippetName`, optional `description`, and optional `enabled` (defaults to `true`)
+ * @returns The updated list of snippet rules as returned by the Cloudflare API
  * @internal
  */
 export async function updateSnippetRules(
@@ -381,7 +394,10 @@ export async function updateSnippetRules(
 }
 
 /**
- * Delete all snippet rules in a zone
+ * Remove all snippet rules for the given zone.
+ *
+ * Treats a missing resource (HTTP 404) as a successful no-op; throws an error for any other non-OK response.
+ *
  * @internal
  */
 export async function deleteSnippetRules(

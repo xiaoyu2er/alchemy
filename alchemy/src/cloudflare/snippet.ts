@@ -239,7 +239,11 @@ export const Snippet = Resource(
 );
 
 /**
- * Get script content from either inline script or file entrypoint
+ * Resolve and return the snippet's JavaScript source from inline `script` or a filesystem `entrypoint`.
+ *
+ * @param props - Snippet properties containing either an inline `script` or an `entrypoint` path
+ * @returns The snippet source code as a UTF-8 string
+ * @throws Error if neither `script` nor `entrypoint` is provided
  * @internal
  */
 async function getScriptContent(props: SnippetProps): Promise<string> {
@@ -264,8 +268,13 @@ interface SnippetResponse {
 }
 
 /**
- * Create or update a snippet
+ * Uploads a JavaScript snippet to a Cloudflare zone, creating or replacing the named snippet.
+ *
  * @internal
+ * @param zoneId - The Cloudflare zone identifier where the snippet will be stored
+ * @param snippetName - The unique name of the snippet within the zone
+ * @param content - The JavaScript source to upload as the snippet
+ * @throws If the Cloudflare API returns an error while creating or updating the snippet
  */
 export async function createOrUpdateSnippet(
   api: CloudflareApi,
@@ -302,8 +311,10 @@ export async function createOrUpdateSnippet(
 }
 
 /**
- * Check if a snippet exists
+ * Determine whether a Cloudflare snippet with the given name exists in the specified zone.
+ *
  * @internal
+ * @returns `true` if the snippet exists, `false` otherwise.
  */
 export async function snippetExists(
   api: CloudflareApi,
@@ -315,8 +326,13 @@ export async function snippetExists(
 }
 
 /**
- * Get a snippet by name
+ * Retrieve metadata for a Cloudflare snippet by name.
+ *
  * @internal
+ * @param api - Cloudflare API client used to perform the request
+ * @param zoneId - Identifier of the Cloudflare zone containing the snippet
+ * @param snippetName - The name of the snippet to retrieve
+ * @returns The snippet metadata (`SnippetResponse`)
  */
 export async function getSnippet(
   api: CloudflareApi,
@@ -330,8 +346,11 @@ export async function getSnippet(
 }
 
 /**
- * Get the content of a snippet
+ * Retrieve the raw content of a Cloudflare snippet.
+ *
  * @internal
+ * @returns The snippet's raw JavaScript content as a string.
+ * @throws When the Cloudflare API responds with an error for the snippet content request.
  */
 export async function getSnippetContent(
   api: CloudflareApi,
@@ -350,8 +369,10 @@ export async function getSnippetContent(
 }
 
 /**
- * List all snippets in a zone
+ * List all snippets for the given zone.
+ *
  * @internal
+ * @returns An array of snippet metadata objects for the zone.
  */
 export async function listSnippets(
   api: CloudflareApi,
@@ -364,8 +385,15 @@ export async function listSnippets(
 }
 
 /**
- * Delete a snippet from Cloudflare
+ * Remove a named snippet from a Cloudflare zone.
+ *
+ * Deletes the snippet identified by `snippetName` in the given `zoneId`. Treats a 404 response
+ * and the Cloudflare 400 message "requested snippet not found" as successful deletions; other
+ * non-OK responses are propagated via API error handling.
+ *
  * @internal
+ * @param zoneId - The Cloudflare zone identifier containing the snippet
+ * @param snippetName - The name of the snippet to delete
  */
 export async function deleteSnippet(
   api: CloudflareApi,
@@ -388,10 +416,10 @@ export async function deleteSnippet(
 }
 
 /**
- * Validates that a snippet name meets Cloudflare requirements due to strong restrictions on the name.
- * Cloudflare Snippets only allow lowercase letters (a-z), numbers (0-9), and underscores (_)
+ * Ensures a snippet name conforms to Cloudflare's naming rules.
  *
- * @throws Error if the name does not meet Cloudflare snippet requirements
+ * @returns `true` if the name is valid.
+ * @throws Error if the name is empty, longer than 255 characters, or contains characters other than lowercase letters (a-z), numbers (0-9), or underscores (_).
  * @internal
  */
 export function validateSnippetName(name: string): boolean {
