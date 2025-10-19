@@ -53,7 +53,7 @@ export interface SnippetProps extends CloudflareApiOptions {
  */
 export type Snippet = Omit<
   SnippetProps,
-  "zone" | "script" | "entrypoint" | "adopt"
+  "zone" | "script" | "entrypoint" | "adopt" | "accountId" | "apiToken"
 > & {
   /**
    * The ID of the resource
@@ -231,8 +231,6 @@ export const Snippet = Resource(
       zoneId,
       createdOn: new Date(result.created_on),
       modifiedOn: new Date(result.modified_on),
-      accountId: props.accountId,
-      apiToken: props.apiToken,
       type: "snippet",
     };
   },
