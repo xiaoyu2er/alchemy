@@ -162,7 +162,9 @@ async function createCloudflareGodToken() {
 
   while (true) {
     const accountId = await text({
-      message: `Enter account ID ${accountIds.length > 0 ? "(or press enter to finish)" : ""}`,
+      message: `Enter account ID ${
+        accountIds.length > 0 ? "(or press enter to finish)" : ""
+      }`,
       placeholder: accountIds.length === 0 ? "account-id" : "",
       defaultValue: "",
       validate: (value) => {
@@ -191,7 +193,7 @@ async function createCloudflareGodToken() {
 
   log.error(
     pc.red(
-      "🚨 If this token is leaked or compromised, it could result in:\n   • Complete account takeover\n   • Data breaches\n   • Service disruption\n   • Financial losses\n",
+      "⚠️ This token has full access to your cloudflare account, make sure you keep it secure!",
     ),
   );
 

@@ -1,5 +1,3 @@
-/// <reference types="@types/node" />
-
 import alchemy from "alchemy";
 import {
   Assets,
@@ -29,8 +27,11 @@ const [d1, kv, r2] = await Promise.all([
     title: `${app.name}-${app.stage}-kv`,
     adopt: true,
     values: [
-      { key: "test1", value: "test1" },
-      { key: "test2", value: "test2" },
+      {
+        key: "my-object-value",
+        value: { type: "object", properties: { id: { type: "string" } } },
+      },
+      { key: "my-string-value", value: "hello-world" },
     ],
     dev: { remote },
   }),

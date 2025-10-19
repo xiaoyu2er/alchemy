@@ -7,7 +7,7 @@ import { destroy } from "../../src/destroy.ts";
 import { fetchAndExpectOK } from "../../src/util/safe-fetch.ts";
 import { BRANCH_PREFIX } from "../util.ts";
 
-import path from "node:path";
+import path from "pathe";
 import "../../src/test/vitest.ts";
 
 const test = alchemy.test(import.meta, {

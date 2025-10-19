@@ -1,6 +1,6 @@
 {
   "name": "alchemy",
-  "version": "0.74.0",
+  "version": "0.75.1",
   "license": "Apache-2.0",
   "author": "Sam Goodwin <sam@alchemy.run>",
   "homepage": "https://alchemy.run",
@@ -71,6 +71,11 @@
     "./cloudflare/astro": {
       "bun": "./src/cloudflare/astro/plugin.ts",
       "import": "./lib/cloudflare/astro/plugin.js"
+    },
+    "./cloudflare/bun-spa": {
+      "bun": "./src/cloudflare/bun-spa/index.ts",
+      "browser": "./src/cloudflare/bun-spa/index.ts",
+      "import": "./lib/cloudflare/bun-spa/index.js"
     },
     "./cloudflare/nuxt": {
       "bun": "./src/cloudflare/nuxt/plugin.ts",

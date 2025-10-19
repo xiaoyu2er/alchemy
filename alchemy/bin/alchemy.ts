@@ -32,7 +32,7 @@ export type AppRouter = typeof router;
 const cli = createCli({
   router,
   name: "alchemy",
-  version: getPackageVersion(),
+  version: await getPackageVersion(),
   description:
     "🧪 Welcome to Alchemy! Creating infrastructure as code with JavaScript and TypeScript.",
 });

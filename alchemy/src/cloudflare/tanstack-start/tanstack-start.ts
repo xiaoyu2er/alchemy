@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "pathe";
 import { exists } from "../../util/exists.ts";
 import type { Assets } from "../assets.ts";
 import type { Bindings } from "../bindings.ts";
