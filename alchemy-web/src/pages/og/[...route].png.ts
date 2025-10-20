@@ -9,7 +9,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join } from "pathe";
 import { chromium, type Browser } from "playwright";
 
 export const prerender = true;

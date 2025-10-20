@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { generate } from "changelogithub";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join } from "pathe";
 
 export async function generateReleaseNotes(tag: string) {
   console.log(`Generating release notes for version ${tag}`);

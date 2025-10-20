@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
-import { posix as path } from "node:path";
+import { posix as path } from "pathe";
 import { expect } from "vitest";
 import { alchemy } from "../src/alchemy.ts";
 import { Bundle } from "../src/esbuild/bundle.ts";
