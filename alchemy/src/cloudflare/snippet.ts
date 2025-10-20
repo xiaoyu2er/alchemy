@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Context } from "../context.ts";
-import { Resource } from "../resource.ts";
+import { Resource, ResourceKind } from "../resource.ts";
 import { handleApiError } from "./api-error.ts";
 import { extractCloudflareResult } from "./api-response.ts";
 import {
@@ -16,7 +16,8 @@ import { findZoneForHostname, type Zone } from "./zone.ts";
  */
 export interface SnippetProps extends CloudflareApiOptions {
   /**
-   * The zone to create the snippet in
+   * The zone this snippet belongs to
+   * Can be a zone ID (32-char hex), zone name/hostname (e.g. "example.com"), or a Zone resource
    */
   zone: string | Zone;
 
@@ -92,6 +93,13 @@ export type Snippet = Omit<
    */
   type: "snippet";
 };
+
+/**
+ * Type guard for Snippet resource
+ */
+export function isSnippet(resource: any): resource is Snippet {
+  return resource?.[ResourceKind] === "cloudflare::Snippet";
+}
 
 /**
  * Creates and manages Cloudflare Snippets for executing custom JavaScript at the edge.
@@ -198,11 +206,16 @@ export const Snippet = Resource(
     validateSnippetName(name);
 
     const api = await createCloudflareApi(props);
-    const zoneId =
-      this.output?.zoneId ||
-      (typeof props.zone === "string"
+    let zoneId: string;
+    if (this.output?.zoneId) {
+      zoneId = this.output.zoneId;
+    } else if (typeof props.zone === "string") {
+      zoneId = props.zone.includes(".")
         ? (await findZoneForHostname(api, props.zone)).zoneId
-        : props.zone.id);
+        : props.zone;
+    } else {
+      zoneId = props.zone.id;
+    }
     const snippetId = this.output?.snippetId || name;
     const adopt = props.adopt ?? this.scope.adopt;
 

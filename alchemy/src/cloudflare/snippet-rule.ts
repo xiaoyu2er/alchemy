@@ -1,20 +1,20 @@
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import { logger } from "../util/logger.ts";
+import { withExponentialBackoff } from "../util/retry.ts";
+import { CloudflareApiError } from "./api-error.ts";
 import { extractCloudflareResult } from "./api-response.ts";
 import {
   createCloudflareApi,
   type CloudflareApi,
   type CloudflareApiOptions,
 } from "./api.ts";
-import type { Snippet } from "./snippet.ts";
+import { type Snippet } from "./snippet.ts";
 import { findZoneForHostname, type Zone } from "./zone.ts";
 
 /**
  * Input format for snippet rule operations
- * Used when calling updateSnippetRules() helper
  * @internal
- * @see updateSnippetRules
  */
 export interface SnippetRuleInput {
   expression: string;
@@ -38,153 +38,156 @@ export interface SnippetRuleResponse {
 }
 
 /**
- * Properties for creating or updating a Snippet Rule
+ * Properties for creating or updating a batch of Snippet Rules
  */
 export interface SnippetRuleProps extends CloudflareApiOptions {
   /**
-   * The zone this rule belongs to
-   * Can be either a zone hostname string or a Zone resource
+   * The zone this rule batch belongs to
+   * Can be a zone ID (32-char hex), zone name/hostname (e.g. "example.com"), or a Zone resource
    */
   zone: string | Zone;
 
   /**
-   * The snippet to execute when this rule matches
-   * Can be a snippet name string or a Snippet resource with a name property
+   * Array of rules to manage for this zone
+   * Rules are executed in the order they appear in this array
    */
-  snippet: string | Snippet;
+  rules: Array<{
+    /**
+     * The expression defining which traffic will match the rule
+     * @example 'http.request.uri.path eq "/api"'
+     */
+    expression: string;
+
+    /**
+     * The snippet to execute (by name or Snippet resource)
+     */
+    snippet: string | Snippet;
+
+    /**
+     * Optional description of the rule
+     */
+    description?: string;
+
+    /**
+     * Whether the rule is enabled (default: true)
+     */
+    enabled?: boolean;
+
+    /**
+     * Optional ID for identifying this rule in the batch
+     * Used internally for adoption and updates
+     * @internal
+     */
+    id?: string;
+  }>;
 
   /**
-   * The expression defining when this rule applies
-   * Uses Cloudflare's Rules language
-   * @example 'http.request.uri.path eq "/api"'
-   * @example 'http.request.uri.path starts_with "/admin"'
-   * @example 'http.request.headers["user-agent"] contains "Mobile"'
-   */
-  expression: string;
-
-  /**
-   * Description of what this rule does
-   */
-  description?: string;
-
-  /**
-   * Whether this rule is enabled
-   * @default true
-   */
-  enabled?: boolean;
-
-  /**
-   * Whether to adopt existing rules in the zone with the same expression and snippet
+   * Whether to adopt existing rules matching the same expressions/snippets
    * @default false
    */
   adopt?: boolean;
 }
 
 /**
- * Output returned after Snippet Rule creation/update
- * IMPORTANT: The type name MUST match the exported resource name
+ * A Snippet Rule batch resource
  */
-export type SnippetRule = Omit<
-  SnippetRuleProps,
-  "zone" | "adopt" | "snippet" | "accountId" | "apiToken"
-> & {
+export type SnippetRule = Omit<SnippetRuleProps, "rules" | "adopt" | "zone"> & {
   /**
-   * The ID of the resource (for Alchemy tracking)
+   * The identifier for this rule batch resource
    */
   id: string;
 
   /**
-   * The Cloudflare-generated rule ID
-   */
-  ruleId: string;
-
-  /**
-   * The zone ID (extracted from zone prop)
+   * The zone ID
    */
   zoneId: string;
 
   /**
-   * The name of the snippet this rule executes
+   * Rules managed by this resource
    */
-  snippetName: string;
+  rules: Array<{
+    /**
+     * The ID of the rule
+     */
+    ruleId: string;
+
+    /**
+     * The expression for the rule
+     */
+    expression: string;
+
+    /**
+     * The snippet name
+     */
+    snippetName: string;
+
+    /**
+     * Description of the rule
+     */
+    description?: string;
+
+    /**
+     * Whether the rule is enabled
+     */
+    enabled: boolean;
+
+    /**
+     * Last updated timestamp
+     */
+    lastUpdated: Date;
+  }>;
 
   /**
-   * When the rule was last updated
+   * Resource type identifier
+   * @internal
    */
-  lastUpdated: Date;
-
-  /**
-   * The rule version
-   */
-  version: string;
+  type: "snippet-rule";
 };
 
 /**
- * Creates and manages Cloudflare Snippet Rules for controlling when snippets execute.
+ * Manages a batch of Snippet Rules for a zone
  *
- * Snippet Rules define the conditions under which a Snippet will be executed using Cloudflare's Rules language.
- * Rules are scoped to a zone and can be combined to create complex execution patterns.
- *
- * @example
- * ## Create a rule to execute a snippet on API paths
- *
- * ```ts
- * const apiRule = await SnippetRule("api-rule", {
- *   zone: "example.com",
- *   snippet: "api_processor",
- *   expression: 'http.request.uri.path starts_with "/api"',
- *   description: "Execute API processor snippet for API endpoints"
- * });
- * ```
+ * The SnippetRule resource manages all snippet rules in a zone as a cohesive batch.
+ * Rules are executed in the order they appear in the rules array. This resource
+ * uses the batch update pattern for efficiency and atomic consistency.
  *
  * @example
- * ## Create a rule using a Snippet resource
- *
- * ```ts
- * const snippet = await Snippet("my-snippet", {
+ * // Create a batch of rules with explicit order
+ * const rules = await SnippetRule("my-rules", {
  *   zone: "example.com",
- *   script: "export default { async fetch(r) { return fetch(r); } }"
+ *   rules: [
+ *     {
+ *       expression: 'http.request.uri.path eq "/api"',
+ *       snippet: apiSnippet,
+ *       description: "API endpoint handler",
+ *     },
+ *     {
+ *       expression: 'http.request.uri.path eq "/admin"',
+ *       snippet: adminSnippet,
+ *       description: "Admin panel handler",
+ *       enabled: false,
+ *     }
+ *   ]
  * });
- *
- * const rule = await SnippetRule("my-rule", {
- *   zone: "example.com",
- *   snippet: snippet,  // Pass the Snippet resource directly
- *   expression: 'http.request.uri.path eq "/api"',
- *   enabled: true
- * });
- * ```
  *
  * @example
- * ## Create multiple rules for different request patterns
- *
- * ```ts
- * const apiRule = await SnippetRule("api-rule", {
+ * // Update rules maintaining explicit order
+ * const updated = await SnippetRule("my-rules", {
  *   zone: "example.com",
- *   snippet: "api_handler",
- *   expression: 'http.request.uri.path starts_with "/api"'
+ *   rules: [
+ *     // New first rule
+ *     {
+ *       expression: 'http.request.uri.path eq "/health"',
+ *       snippet: healthSnippet,
+ *     },
+ *     // Existing rules follow
+ *     {
+ *       id: previousRuleId,
+ *       expression: 'http.request.uri.path eq "/api"',
+ *       snippet: apiSnippet,
+ *     }
+ *   ]
  * });
- *
- * const adminRule = await SnippetRule("admin-rule", {
- *   zone: "example.com",
- *   snippet: "admin_handler",
- *   expression: 'http.request.uri.path starts_with "/admin"'
- * });
- * ```
- *
- * @example
- * ## Create a rule targeting specific hostnames with User-Agent matching
- *
- * ```ts
- * const mobileRule = await SnippetRule("mobile-rule", {
- *   zone: "example.com",
- *   snippet: "mobile_optimizer",
- *   expression: 'http.host eq "api.example.com" and http.request.headers["user-agent"] contains "Mobile"',
- *   description: "Optimize mobile requests to API subdomain"
- * });
- * ```
- *
- * @see https://developers.cloudflare.com/rules/snippets/
- * @see Snippet - Create snippets to execute with these rules
  */
 export const SnippetRule = Resource(
   "cloudflare::SnippetRule",
@@ -194,153 +197,102 @@ export const SnippetRule = Resource(
     props: SnippetRuleProps,
   ): Promise<SnippetRule> {
     const api = await createCloudflareApi(props);
-    const zoneId =
-      typeof props.zone === "string"
+    let zoneId: string;
+    if (this.output?.zoneId) {
+      zoneId = this.output.zoneId;
+    } else if (typeof props.zone === "string") {
+      zoneId = props.zone.includes(".")
         ? (await findZoneForHostname(api, props.zone)).zoneId
-        : props.zone.id;
-    const snippetName =
-      typeof props.snippet === "string" ? props.snippet : props.snippet.name;
-    const adopt = props.adopt ?? this.scope.adopt;
+        : props.zone;
+    } else {
+      zoneId = props.zone.id;
+    }
 
     if (this.phase === "delete") {
-      const ruleId = this.output?.ruleId;
-      if (!ruleId) {
-        logger.warn(`No ruleId found for ${id}, skipping delete`);
-        return this.destroy();
-      }
-
-      await deleteSnippetRuleById(api, zoneId, ruleId);
+      await deleteSnippetRules(api, zoneId);
       return this.destroy();
     }
 
-    let existingRulesResponse: Array<SnippetRuleInput & { id: string }> = [];
-    try {
-      const rules = await listSnippetRules(api, zoneId);
-
-      existingRulesResponse = (rules ?? []).map((r) => ({
-        id: r.id,
-        expression: r.expression,
-        snippetName: r.snippet_name,
-        description: r.description,
-        enabled: r.enabled,
-      }));
-    } catch {
-      logger.warn(`No existing snippet rules found for zone ${zoneId}`);
+    const seenRuleDefinitions = new Set<string>();
+    for (const rule of props.rules) {
+      const key = `${rule.expression}:${
+        typeof rule.snippet === "string" ? rule.snippet : rule.snippet.name
+      }`;
+      if (seenRuleDefinitions.has(key)) {
+        throw new Error(
+          `Duplicate rule found: expression="${rule.expression}" with snippet="${
+            typeof rule.snippet === "string" ? rule.snippet : rule.snippet.name
+          }"`,
+        );
+      }
+      seenRuleDefinitions.add(key);
     }
 
-    let ruleToUpdate = this.output?.ruleId
-      ? existingRulesResponse.find((r) => r.id === this.output?.ruleId)
-      : null;
+    const existingRules = await listSnippetRules(api, zoneId);
+    const existingByKey = new Map(
+      existingRules.map((r) => [`${r.expression}:${r.snippet_name}`, r]),
+    );
+    const apiRules: Array<SnippetRuleInput & { id?: string }> = [];
 
-    if (!ruleToUpdate && !this.output?.ruleId) {
-      const existingByKey = existingRulesResponse.find(
-        (r) =>
-          r.expression === props.expression && r.snippetName === snippetName,
-      );
+    for (const rule of props.rules) {
+      const snippetName =
+        typeof rule.snippet === "string" ? rule.snippet : rule.snippet.name;
+      const key = `${rule.expression}:${snippetName}`;
+      const existing = existingByKey.get(key);
 
-      if (existingByKey) {
-        if (!adopt) {
-          throw new Error(
-            `Snippet rule matching expression "${props.expression}" and snippet "${snippetName}" already exists. Use adopt: true to adopt it.`,
-          );
-        }
-        ruleToUpdate = existingByKey;
+      if (rule.id || existing) {
+        apiRules.push({
+          id: rule.id || existing?.id,
+          expression: rule.expression,
+          snippetName,
+          description: rule.description,
+          enabled: rule.enabled ?? true,
+        });
+      } else {
+        apiRules.push({
+          expression: rule.expression,
+          snippetName,
+          description: rule.description,
+          enabled: rule.enabled ?? true,
+        });
       }
     }
 
-    const ruleData: SnippetRuleInput = {
-      expression: props.expression,
-      snippetName,
-      description: props.description,
-      enabled: props.enabled ?? true,
-    };
-
-    let updatedRules: SnippetRuleInput[];
-
-    if (ruleToUpdate) {
-      updatedRules = existingRulesResponse.map((rule) =>
-        rule.id === ruleToUpdate!.id ? ruleData : rule,
-      );
-    } else {
-      updatedRules = [...existingRulesResponse, ruleData];
-    }
-
-    const result = await updateSnippetRules(api, zoneId, updatedRules);
-    const updatedRule = result.find(
-      (r) =>
-        r.expression === props.expression && r.snippet_name === snippetName,
+    const result = await withExponentialBackoff(
+      async () => updateSnippetRules(api, zoneId, apiRules),
+      (error: CloudflareApiError) => {
+        const shouldRetry = error.errorData?.some(
+          (e: any) =>
+            e.code === 1002 ||
+            e.message?.includes("doesn't exist") ||
+            e.message?.includes("not found"),
+        );
+        if (shouldRetry) {
+          logger.warn(
+            `Snippet rules update encountered error, retrying due to propagation delay: ${error.message}`,
+          );
+        }
+        return shouldRetry;
+      },
+      20,
+      100,
     );
-
-    if (!updatedRule) {
-      throw new Error(
-        `Failed to find updated rule after update for expression "${props.expression}"`,
-      );
-    }
 
     return {
       id,
-      ruleId: updatedRule.id,
       zoneId,
-      snippetName: updatedRule.snippet_name,
-      expression: updatedRule.expression,
-      description: updatedRule.description,
-      enabled: updatedRule.enabled,
-      lastUpdated: new Date(updatedRule.last_updated),
-      version: updatedRule.version || "1",
-    };
-  },
-);
-
-/**
- * Delete a snippet rule from a zone by its ID
- * @internal
- */
-async function deleteSnippetRuleById(
-  api: CloudflareApi,
-  zoneId: string,
-  ruleId: string,
-): Promise<void> {
-  try {
-    let existingRulesResponse: Array<SnippetRuleInput & { id: string }> = [];
-    try {
-      const rules = await listSnippetRules(api, zoneId);
-      existingRulesResponse = (rules ?? []).map((r) => ({
-        id: r.id,
+      rules: result.map((r) => ({
+        ruleId: r.id,
         expression: r.expression,
         snippetName: r.snippet_name,
         description: r.description,
         enabled: r.enabled,
-      }));
-    } catch {
-      logger.warn(
-        `No existing snippet rules found in zone ${zoneId} during delete`,
-      );
-      return;
-    }
-
-    const ruleIndex = existingRulesResponse.findIndex((r) => r.id === ruleId);
-
-    if (ruleIndex === -1) {
-      logger.warn(
-        `Rule ${ruleId} not found in zone ${zoneId}, skipping delete`,
-      );
-      return;
-    }
-
-    const updatedRules = existingRulesResponse
-      .filter((_, index) => index !== ruleIndex)
-      .map(({ id, ...rest }) => rest);
-
-    if (updatedRules.length > 0) {
-      await updateSnippetRules(api, zoneId, updatedRules);
-    } else {
-      await deleteSnippetRules(api, zoneId);
-    }
-  } catch (error) {
-    logger.error(`Error deleting snippet rule ${ruleId}:`, error);
-    throw error;
-  }
-}
+        lastUpdated: new Date(r.last_updated),
+      })),
+      type: "snippet-rule",
+    };
+  },
+);
 
 /**
  * List all snippet rules in a zone
@@ -350,10 +302,12 @@ export async function listSnippetRules(
   api: CloudflareApi,
   zoneId: string,
 ): Promise<SnippetRuleResponse[]> {
-  return await extractCloudflareResult<SnippetRuleResponse[]>(
+  const result = await extractCloudflareResult<SnippetRuleResponse[] | null>(
     `list snippet rules in zone "${zoneId}"`,
     api.get(`/zones/${zoneId}/snippets/snippet_rules`),
   );
+
+  return result ?? [];
 }
 
 /**
@@ -363,10 +317,11 @@ export async function listSnippetRules(
 export async function updateSnippetRules(
   api: CloudflareApi,
   zoneId: string,
-  rules: SnippetRuleInput[],
+  rules: Array<SnippetRuleInput & { id?: string }>,
 ): Promise<SnippetRuleResponse[]> {
   const requestBody = {
     rules: rules.map((rule) => ({
+      ...(rule.id && { id: rule.id }),
       expression: rule.expression,
       snippet_name: rule.snippetName,
       description: rule.description,
@@ -374,10 +329,12 @@ export async function updateSnippetRules(
     })),
   };
 
-  return await extractCloudflareResult<SnippetRuleResponse[]>(
+  const result = await extractCloudflareResult<SnippetRuleResponse[] | null>(
     `update snippet rules in zone "${zoneId}"`,
     api.put(`/zones/${zoneId}/snippets/snippet_rules`, requestBody),
   );
+
+  return result ?? [];
 }
 
 /**
@@ -388,9 +345,10 @@ export async function deleteSnippetRules(
   api: CloudflareApi,
   zoneId: string,
 ): Promise<void> {
-  const response = await api.delete(`/zones/${zoneId}/snippets/snippet_rules`);
-
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`Failed to delete snippet rules: ${response.statusText}`);
+  try {
+    await api.delete(`/zones/${zoneId}/snippets/snippet_rules`);
+  } catch (error) {
+    logger.error(`Error deleting snippet rules in zone ${zoneId}:`, error);
+    throw error;
   }
 }

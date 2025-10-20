@@ -1,13 +1,17 @@
 import { describe, expect } from "vitest";
 import { alchemy } from "../../src/alchemy.ts";
 import { createCloudflareApi } from "../../src/cloudflare/api.ts";
-import { SnippetRule } from "../../src/cloudflare/snippet-rule.ts";
+import {
+  listSnippetRules,
+  SnippetRule,
+} from "../../src/cloudflare/snippet-rule.ts";
 import { Snippet } from "../../src/cloudflare/snippet.ts";
 import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
 import { BRANCH_PREFIX } from "../util.ts";
 
 import "../../src/test/vitest.ts";
+import { createSnippetName } from "./snippet.test.ts";
 
 const ZONE_NAME = process.env.TEST_ZONE ?? process.env.ALCHEMY_TEST_DOMAIN!;
 
@@ -18,380 +22,388 @@ const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
 
-function createSnippetName(base: string): string {
-  return base.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-}
-
-describe("SnippetRule Resource", () => {
-  test("create and delete snippet rule", async (scope) => {
-    const snippetName = createSnippetName(`${BRANCH_PREFIX}_rule_snippet`);
-    const ruleName = `${BRANCH_PREFIX}_rule_basic`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
-
-    try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        adopt: true,
-        script: `
-export default {
-  async fetch(request) {
-    const response = await fetch(request);
-    response.headers.set('X-Rule-Executed', 'true');
-    return response;
-  }
-}
-        `.trim(),
-      });
-
-      expect(snippet.name).toEqual(snippetName);
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/api"',
-        description: "Execute snippet for API paths",
-        enabled: true,
-      });
-
-      expect(rule.id).toEqual(ruleName);
-      expect(rule.snippetName).toEqual(snippetName);
-      expect(rule.expression).toEqual('http.request.uri.path eq "/api"');
-      expect(rule.enabled).toBe(true);
-      expect(rule.description).toEqual("Execute snippet for API paths");
-      expect(rule.zoneId).toEqual(zoneId);
-      expect(rule.ruleId).toBeTruthy();
-      expect(rule.lastUpdated).toBeInstanceOf(Date);
-      expect(rule.version).toBeTruthy();
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("create rule with snippet name string", async (scope) => {
-    const snippetName = createSnippetName(`${BRANCH_PREFIX}_rule_snippet_2`);
-    const ruleName = `${BRANCH_PREFIX}_rule_string_ref`;
-
-    let rule: SnippetRule | undefined;
-
-    try {
-      await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        script:
-          "export default { async fetch(request) { return fetch(request); } }",
-        adopt: true,
-      });
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippetName,
-        expression: 'http.request.uri.path eq "/admin"',
-        description: "Admin path handler",
-        enabled: true,
-      });
-
-      expect(rule.snippetName).toEqual(snippetName);
-      expect(rule.expression).toEqual('http.request.uri.path eq "/admin"');
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("update snippet rule", async (scope) => {
-    const snippetName = createSnippetName(
-      `${BRANCH_PREFIX}_rule_update_snippet`,
-    );
-    const ruleName = `${BRANCH_PREFIX}_rule_update`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
-
-    try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        adopt: true,
-        script:
-          "export default { async fetch(request) { return fetch(request); } }",
-      });
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/api"',
-        description: "Original description",
-        enabled: true,
-      });
-
-      const originalRuleId = rule.ruleId;
-
-      expect(rule.description).toEqual("Original description");
-      expect(rule.enabled).toBe(true);
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/api"',
-        description: "Updated description",
-        enabled: true,
-      });
-
-      expect(rule.ruleId).toEqual(originalRuleId);
-      expect(rule.expression).toEqual('http.request.uri.path eq "/api"');
-      expect(rule.description).toEqual("Updated description");
-      expect(rule.lastUpdated).toBeInstanceOf(Date);
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("disable and re-enable snippet rule", async (scope) => {
-    const snippetName = createSnippetName(
-      `${BRANCH_PREFIX}_rule_disable_snippet`,
-    );
-    const ruleName = `${BRANCH_PREFIX}_rule_disable`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
-
-    try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        adopt: true,
-        script:
-          "export default { async fetch(request) { return fetch(request); } }",
-      });
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/test"',
-        enabled: true,
-      });
-
-      expect(rule.enabled).toBe(true);
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/test"',
-        enabled: false,
-      });
-
-      expect(rule.enabled).toBe(false);
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/test"',
-        enabled: true,
-      });
-
-      expect(rule.enabled).toBe(true);
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("create multiple rules for different snippets", async (scope) => {
-    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_multi_snippet_1`);
-    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_multi_snippet_2`);
-    const rule1Name = `${BRANCH_PREFIX}_multi_rule_1`;
-    const rule2Name = `${BRANCH_PREFIX}_multi_rule_2`;
+describe.sequential("SnippetRule Batch Resource", () => {
+  test("create and delete batch of rules with explicit order", async (scope) => {
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_batch_snippet_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_batch_snippet_2`);
+    const snippet3Name = createSnippetName(`${BRANCH_PREFIX}_batch_snippet_3`);
+    const batchId = `${BRANCH_PREFIX}_batch_rules`;
 
     let snippet1: Snippet | undefined;
     let snippet2: Snippet | undefined;
-    let rule1: SnippetRule | undefined;
-    let rule2: SnippetRule | undefined;
+    let snippet3: Snippet | undefined;
+    let batch: SnippetRule | undefined;
 
     try {
       snippet1 = await Snippet(snippet1Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet1Name,
         script:
-          "export default { async fetch(request) { return fetch(request); } }",
+          "export default { async fetch(r) { return new Response('1'); } }",
         adopt: true,
       });
 
       snippet2 = await Snippet(snippet2Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet2Name,
         script:
-          "export default { async fetch(request) { return fetch(request); } }",
+          "export default { async fetch(r) { return new Response('2'); } }",
         adopt: true,
       });
 
-      rule1 = await SnippetRule(rule1Name, {
-        zone: ZONE_NAME,
-        snippet: snippet1,
-        expression: 'http.request.uri.path eq "/api"',
-        description: "API endpoint rule",
+      snippet3 = await Snippet(snippet3Name, {
+        zone: zoneId,
+        name: snippet3Name,
+        script:
+          "export default { async fetch(r) { return new Response('3'); } }",
+        adopt: true,
       });
 
-      rule2 = await SnippetRule(rule2Name, {
-        zone: ZONE_NAME,
-        snippet: snippet2,
-        expression: 'http.request.uri.path eq "/admin"',
-        description: "Admin endpoint rule",
+      batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [
+          {
+            expression: 'http.request.uri.path eq "/first"',
+            snippet: snippet1,
+            description: "First handler - executes first",
+          },
+          {
+            expression: 'http.request.uri.path eq "/second"',
+            snippet: snippet2,
+            description: "Second handler - executes second",
+          },
+          {
+            expression: 'http.request.uri.path eq "/third"',
+            snippet: snippet3,
+            description: "Third handler - executes last",
+            enabled: false,
+          },
+        ],
       });
 
-      expect(rule1.snippetName).toEqual(snippet1Name);
-      expect(rule2.snippetName).toEqual(snippet2Name);
-      expect(rule1.ruleId).not.toEqual(rule2.ruleId);
-      expect(rule1.expression).not.toEqual(rule2.expression);
+      expect(batch.id).toEqual(batchId);
+      expect(batch.rules).toHaveLength(3);
+      expect(batch.rules[0].expression).toEqual(
+        'http.request.uri.path eq "/first"',
+      );
+      expect(batch.rules[0].snippetName).toEqual(snippet1Name);
+      expect(batch.rules[1].expression).toEqual(
+        'http.request.uri.path eq "/second"',
+      );
+      expect(batch.rules[1].snippetName).toEqual(snippet2Name);
+      expect(batch.rules[2].expression).toEqual(
+        'http.request.uri.path eq "/third"',
+      );
+      expect(batch.rules[2].enabled).toBe(false);
+
+      // Verify rules were created in API
+      const apiRules = await listSnippetRules(api, zoneId);
+      const ourRules = apiRules.filter((r) =>
+        [snippet1Name, snippet2Name, snippet3Name].includes(r.snippet_name),
+      );
+      expect(ourRules).toHaveLength(3);
+
+      batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [
+          {
+            id: batch.rules[2].ruleId,
+            expression: 'http.request.uri.path eq "/third"',
+            snippet: snippet3,
+            description: "Third handler - now first",
+            enabled: true,
+          },
+          {
+            id: batch.rules[0].ruleId,
+            expression: 'http.request.uri.path eq "/first"',
+            snippet: snippet1,
+            description: "First handler - now second",
+          },
+          {
+            id: batch.rules[1].ruleId,
+            expression: 'http.request.uri.path eq "/second"',
+            snippet: snippet2,
+            description: "Second handler - now third",
+          },
+        ],
+      });
+
+      expect(batch.rules[0].expression).toEqual(
+        'http.request.uri.path eq "/third"',
+      );
+      expect(batch.rules[0].enabled).toBe(true);
+      expect(batch.rules[1].expression).toEqual(
+        'http.request.uri.path eq "/first"',
+      );
+      expect(batch.rules[2].expression).toEqual(
+        'http.request.uri.path eq "/second"',
+      );
+    } finally {
+      await destroy(scope);
+
+      // Verify all rules were deleted
+      const finalRules = await listSnippetRules(api, zoneId);
+      const remainingOurRules = finalRules.filter((r) =>
+        [snippet1Name, snippet2Name, snippet3Name].includes(r.snippet_name),
+      );
+      expect(remainingOurRules).toHaveLength(0);
+    }
+  }, 180000);
+
+  test("handles empty rules array", async (scope) => {
+    const batchId = `${BRANCH_PREFIX}_empty_batch`;
+
+    try {
+      const batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [],
+      });
+
+      expect(batch.id).toEqual(batchId);
+      expect(batch.rules).toHaveLength(0);
     } finally {
       await destroy(scope);
     }
   });
 
-  test("adopt existing snippet rule", async (scope) => {
-    const snippetName = createSnippetName(`${BRANCH_PREFIX}_adopt_snippet`);
-    const ruleName1 = `${BRANCH_PREFIX}_adopt_rule_1`;
-    const ruleName2 = `${BRANCH_PREFIX}_adopt_rule_2`;
+  test("throws error for duplicate rule definitions", async (scope) => {
+    const snippetName = createSnippetName(`${BRANCH_PREFIX}_dup_snippet`);
+    const batchId = `${BRANCH_PREFIX}_dup_batch`;
 
     let snippet: Snippet | undefined;
-    let rule1: SnippetRule | undefined;
-    let rule2: SnippetRule | undefined;
 
     try {
       snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
+        script: "export default { async fetch(r) { return fetch(r); } }",
         adopt: true,
+      });
+
+      await expect(
+        SnippetRule(batchId, {
+          zone: zoneId,
+          rules: [
+            {
+              expression: 'http.request.uri.path eq "/api"',
+              snippet: snippet,
+            },
+            {
+              expression: 'http.request.uri.path eq "/api"',
+              snippet: snippet,
+            },
+          ],
+        }),
+      ).rejects.toThrow(/Duplicate rule found/);
+    } finally {
+      await destroy(scope);
+    }
+  });
+
+  test("adoption prevents conflicts", async (scope) => {
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_adopt_snippet_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_adopt_snippet_2`);
+    const batchId = `${BRANCH_PREFIX}_adopt_batch`;
+    let snippet1: Snippet | undefined;
+    let snippet2: Snippet | undefined;
+
+    try {
+      snippet1 = await Snippet(snippet1Name, {
+        zone: zoneId,
+        name: snippet1Name,
         script:
-          "export default { async fetch(request) { return fetch(request); } }",
+          "export default { async fetch(r) { return new Response('1'); } }",
+        adopt: true,
       });
 
-      rule1 = await SnippetRule(ruleName1, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/api"',
+      snippet2 = await Snippet(snippet2Name, {
+        zone: zoneId,
+        name: snippet2Name,
+        script:
+          "export default { async fetch(r) { return new Response('2'); } }",
+        adopt: true,
       });
 
-      expect(rule1.snippetName).toEqual(snippetName);
+      const batch1 = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [
+          {
+            expression: 'http.request.uri.path eq "/first"',
+            snippet: snippet1,
+          },
+        ],
+      });
 
-      try {
-        await SnippetRule(ruleName2, {
-          zone: ZONE_NAME,
-          snippet: snippet,
-          expression: 'http.request.uri.path eq "/api"',
+      expect(batch1.rules).toHaveLength(1);
+      const firstRuleId = batch1.rules[0].ruleId;
+      const batch2 = await SnippetRule(batchId, {
+        zone: zoneId,
+        adopt: true,
+        rules: [
+          {
+            id: firstRuleId,
+            expression: 'http.request.uri.path eq "/first"',
+            snippet: snippet1,
+          },
+          {
+            expression: 'http.request.uri.path eq "/second"',
+            snippet: snippet2,
+          },
+        ],
+      });
+
+      expect(batch2.rules).toHaveLength(2);
+      expect(batch2.rules[0].ruleId).toEqual(firstRuleId);
+      expect(batch2.rules[1].snippetName).toEqual(snippet2Name);
+    } finally {
+      await destroy(scope);
+    }
+  });
+
+  test("performance - single API call for batch", async (scope) => {
+    const snippets: Snippet[] = [];
+    const snippetNames: string[] = [];
+    const batchId = `${BRANCH_PREFIX}_perf_batch`;
+
+    try {
+      // Create 10 snippets
+      for (let i = 0; i < 10; i++) {
+        const name = createSnippetName(`${BRANCH_PREFIX}_perf_snippet_${i}`);
+        snippetNames.push(name);
+        const snippet = await Snippet(name, {
+          zone: zoneId,
+          name,
+          script: `export default { async fetch(r) { return new Response('${i}'); } }`,
+          adopt: true,
         });
-        throw new Error(
-          "Should have thrown error for existing rule without adopt",
-        );
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain("already exists");
-        expect((error as Error).message).toContain("adopt: true");
+        snippets.push(snippet);
       }
 
-      rule2 = await SnippetRule(ruleName2, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/api"',
-        description: "Adopted rule",
+      // Create batch with all 10 rules in one call
+      const batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: snippets.map((snippet, i) => ({
+          expression: `http.request.uri.path eq "/path${i}"`,
+          snippet,
+          description: `Rule ${i}`,
+        })),
+      });
+
+      expect(batch.rules).toHaveLength(10);
+
+      // Verify all rules exist
+      const apiRules = await listSnippetRules(api, zoneId);
+      const ourRules = apiRules.filter((r) =>
+        snippetNames.includes(r.snippet_name),
+      );
+      expect(ourRules).toHaveLength(10);
+    } finally {
+      await destroy(scope);
+    }
+  }, 60000);
+
+  test("update using snippet string references", async (scope) => {
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_string_ref_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_string_ref_2`);
+    const batchId = `${BRANCH_PREFIX}_string_batch`;
+
+    try {
+      await Snippet(snippet1Name, {
+        zone: zoneId,
+        name: snippet1Name,
+        script:
+          "export default { async fetch(r) { return new Response('1'); } }",
         adopt: true,
       });
 
-      expect(rule2.snippetName).toEqual(snippetName);
-      expect(rule2.ruleId).toEqual(rule1.ruleId); // Should be same rule
-      expect(rule2.description).toEqual("Adopted rule");
+      await Snippet(snippet2Name, {
+        zone: zoneId,
+        name: snippet2Name,
+        script:
+          "export default { async fetch(r) { return new Response('2'); } }",
+        adopt: true,
+      });
+
+      const batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [
+          {
+            expression: 'http.request.uri.path eq "/path1"',
+            snippet: snippet1Name,
+          },
+          {
+            expression: 'http.request.uri.path eq "/path2"',
+            snippet: snippet2Name,
+          },
+        ],
+      });
+
+      expect(batch.rules).toHaveLength(2);
+      expect(batch.rules[0].snippetName).toEqual(snippet1Name);
+      expect(batch.rules[1].snippetName).toEqual(snippet2Name);
     } finally {
       await destroy(scope);
     }
   });
 
-  test("snippet rule with complex expression", async (scope) => {
-    const snippetName = createSnippetName(`${BRANCH_PREFIX}_complex_snippet`);
-    const ruleName = `${BRANCH_PREFIX}_complex_rule`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
-
-    try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        adopt: true,
-        script:
-          "export default { async fetch(request) { return fetch(request); } }",
-      });
-
-      const complexExpression =
-        '(http.request.uri.path eq "/api" and http.request.method eq "POST") or (http.request.headers["user-agent"] contains "Mobile")';
-
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: complexExpression,
-        description: "Complex multi-condition rule",
-      });
-
-      expect(rule.expression).toEqual(complexExpression);
-      expect(rule.description).toEqual("Complex multi-condition rule");
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("snippet rule with Zone resource object", async (scope) => {
-    const snippetName = createSnippetName(`${BRANCH_PREFIX}_zone_obj_snippet`);
-    const ruleName = `${BRANCH_PREFIX}_zone_obj_rule`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
+  test("rule execution order determined by array position", async (scope) => {
+    const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_order_1`);
+    const snippet2Name = createSnippetName(`${BRANCH_PREFIX}_order_2`);
+    const snippet3Name = createSnippetName(`${BRANCH_PREFIX}_order_3`);
+    const batchId = `${BRANCH_PREFIX}_order_batch`;
+    let snippet1: Snippet | undefined;
+    let snippet2: Snippet | undefined;
+    let snippet3: Snippet | undefined;
 
     try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
-        adopt: true,
+      snippet1 = await Snippet(snippet1Name, {
+        zone: zoneId,
+        name: snippet1Name,
         script:
-          "export default { async fetch(request) { return fetch(request); } }",
-      });
-
-      rule = await SnippetRule(ruleName, {
-        zone: { id: zoneId } as any,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/test"',
-      });
-
-      expect(rule.zoneId).toEqual(zoneId);
-      expect(rule.snippetName).toEqual(snippetName);
-    } finally {
-      await destroy(scope);
-    }
-  });
-
-  test("default enabled value is true", async (scope) => {
-    const snippetName = createSnippetName(
-      `${BRANCH_PREFIX}_default_enabled_snippet`,
-    );
-    const ruleName = `${BRANCH_PREFIX}_default_enabled_rule`;
-
-    let snippet: Snippet | undefined;
-    let rule: SnippetRule | undefined;
-
-    try {
-      snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
-        name: snippetName,
+          "export default { async fetch(r) { return new Response('1'); } }",
         adopt: true,
+      });
+
+      snippet2 = await Snippet(snippet2Name, {
+        zone: zoneId,
+        name: snippet2Name,
         script:
-          "export default { async fetch(request) { return fetch(request); } }",
+          "export default { async fetch(r) { return new Response('2'); } }",
+        adopt: true,
       });
 
-      rule = await SnippetRule(ruleName, {
-        zone: ZONE_NAME,
-        snippet: snippet,
-        expression: 'http.request.uri.path eq "/test"',
+      snippet3 = await Snippet(snippet3Name, {
+        zone: zoneId,
+        name: snippet3Name,
+        script:
+          "export default { async fetch(r) { return new Response('3'); } }",
+        adopt: true,
       });
 
-      expect(rule.enabled).toBe(true);
+      const batch = await SnippetRule(batchId, {
+        zone: zoneId,
+        rules: [
+          {
+            expression: "true",
+            snippet: snippet1,
+            description: "Executes first",
+          },
+          {
+            expression: "true",
+            snippet: snippet2,
+            description: "Executes second",
+          },
+          {
+            expression: "true",
+            snippet: snippet3,
+            description: "Executes third",
+          },
+        ],
+      });
+
+      expect(batch.rules[0].snippetName).toEqual(snippet1Name);
+      expect(batch.rules[1].snippetName).toEqual(snippet2Name);
+      expect(batch.rules[2].snippetName).toEqual(snippet3Name);
     } finally {
       await destroy(scope);
     }

@@ -2,17 +2,17 @@ import { describe, expect } from "vitest";
 import { alchemy } from "../../src/alchemy.ts";
 import { createCloudflareApi } from "../../src/cloudflare/api.ts";
 import {
+  deleteSnippetRules,
+  updateSnippetRules,
+  type SnippetRuleInput,
+} from "../../src/cloudflare/snippet-rule.ts";
+import {
   Snippet,
   deleteSnippet,
   getSnippet,
   getSnippetContent,
   listSnippets,
 } from "../../src/cloudflare/snippet.ts";
-import {
-  deleteSnippetRules,
-  type SnippetRuleInput,
-  updateSnippetRules,
-} from "../../src/cloudflare/snippet-rule.ts";
 import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
 import { BRANCH_PREFIX } from "../util.ts";
@@ -28,7 +28,7 @@ const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
 
-function createSnippetName(base: string): string {
+export function createSnippetName(base: string): string {
   return base.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
 }
 
@@ -53,7 +53,7 @@ describe("Snippet Resource", () => {
 
     try {
       snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script: `
 export default {
@@ -79,7 +79,7 @@ export default {
       expect(content).toContain("Hello from Snippet");
 
       snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script: `
 export default {
@@ -120,7 +120,7 @@ export default {
 
     try {
       snippet1 = await Snippet(snippet1Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet1Name,
         script: `
 export default {
@@ -134,7 +134,7 @@ export default {
       });
 
       snippet2 = await Snippet(snippet2Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet2Name,
         script: `
 export default {
@@ -181,7 +181,7 @@ export default {
 
     try {
       const snippet = await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script: `
 export default {
@@ -210,14 +210,14 @@ export default {
 
     try {
       await Snippet(snippet1Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet1Name,
         script:
           "export default { async fetch(request) { return fetch(request); } }",
       });
 
       await Snippet(snippet2Name, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippet2Name,
         script:
           "export default { async fetch(request) { return fetch(request); } }",
@@ -241,7 +241,7 @@ export default {
 
     try {
       const snippet1 = await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script: `
 export default {
@@ -258,7 +258,7 @@ export default {
 
       try {
         await Snippet(`${snippetName}-2`, {
-          zone: ZONE_NAME,
+          zone: zoneId,
           name: snippetName,
           script: `
 export default {
@@ -278,7 +278,7 @@ export default {
       }
 
       const snippet2 = await Snippet(`${snippetName}-adopted`, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script: `
 export default {
@@ -306,7 +306,7 @@ export default {
     const snippetName = "A@B-1.2";
     try {
       await Snippet(snippetName, {
-        zone: ZONE_NAME,
+        zone: zoneId,
         name: snippetName,
         script:
           "export default { async fetch(request) { return fetch(request); } }",
