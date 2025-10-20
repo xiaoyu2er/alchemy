@@ -50,24 +50,18 @@ npm run build
 
 ## Deployment
 
-Deployment is done using the Wrangler CLI.
+Deployment is done using Alchemy, which handles all infrastructure as code.
 
-To build and deploy directly to production:
+To build and deploy:
 
 ```sh
 npm run deploy
 ```
 
-To deploy a preview URL:
+To destroy the deployment:
 
 ```sh
-npx wrangler versions upload
-```
-
-You can then promote a version to production after verification or roll it out progressively.
-
-```sh
-npx wrangler versions deploy
+npm run destroy
 ```
 
 ## Styling
