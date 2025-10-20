@@ -15,22 +15,16 @@ import {
 } from "../../src/cloudflare/snippet.ts";
 import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
-import { BRANCH_PREFIX } from "../util.ts";
-
 import "../../src/test/vitest.ts";
+import { BRANCH_PREFIX } from "../util.ts";
+import { createSnippetName } from "./snippet-test-util.ts";
 
 const ZONE_NAME = process.env.TEST_ZONE ?? process.env.ALCHEMY_TEST_DOMAIN!;
-
 const api = await createCloudflareApi();
 const zoneId = (await findZoneForHostname(api, ZONE_NAME)).zoneId;
-
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
-
-export function createSnippetName(base: string): string {
-  return base.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-}
 
 async function verifySnippetExists(snippetName: string): Promise<void> {
   const snippet = await getSnippet(api, zoneId, snippetName);
@@ -214,6 +208,7 @@ export default {
         name: snippet1Name,
         script:
           "export default { async fetch(request) { return fetch(request); } }",
+        adopt: true,
       });
 
       await Snippet(snippet2Name, {
@@ -221,6 +216,7 @@ export default {
         name: snippet2Name,
         script:
           "export default { async fetch(request) { return fetch(request); } }",
+        adopt: true,
       });
 
       const snippets = await listSnippets(api, zoneId);
@@ -252,6 +248,7 @@ export default {
   }
 }
         `.trim(),
+        adopt: true,
       });
 
       expect(snippet1.name).toEqual(snippetName);

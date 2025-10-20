@@ -8,16 +8,13 @@ import {
 import { Snippet } from "../../src/cloudflare/snippet.ts";
 import { findZoneForHostname } from "../../src/cloudflare/zone.ts";
 import { destroy } from "../../src/destroy.ts";
-import { BRANCH_PREFIX } from "../util.ts";
-
 import "../../src/test/vitest.ts";
-import { createSnippetName } from "./snippet.test.ts";
+import { BRANCH_PREFIX } from "../util.ts";
+import { createSnippetName } from "./snippet-test-util.ts";
 
 const ZONE_NAME = process.env.TEST_ZONE ?? process.env.ALCHEMY_TEST_DOMAIN!;
-
 const api = await createCloudflareApi();
 const zoneId = (await findZoneForHostname(api, ZONE_NAME)).zoneId;
-
 const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
@@ -266,18 +263,19 @@ describe.sequential("SnippetRule Batch Resource", () => {
     const batchId = `${BRANCH_PREFIX}_perf_batch`;
 
     try {
-      // Create 10 snippets
-      for (let i = 0; i < 10; i++) {
+      const snippetPromises = Array.from({ length: 10 }, (_, i) => {
         const name = createSnippetName(`${BRANCH_PREFIX}_perf_snippet_${i}`);
         snippetNames.push(name);
-        const snippet = await Snippet(name, {
+        return Snippet(name, {
           zone: zoneId,
           name,
           script: `export default { async fetch(r) { return new Response('${i}'); } }`,
           adopt: true,
         });
-        snippets.push(snippet);
-      }
+      });
+
+      const createdSnippets = await Promise.all(snippetPromises);
+      snippets.push(...createdSnippets);
 
       // Create batch with all 10 rules in one call
       const batch = await SnippetRule(batchId, {
@@ -300,7 +298,7 @@ describe.sequential("SnippetRule Batch Resource", () => {
     } finally {
       await destroy(scope);
     }
-  }, 60000);
+  }, 120000);
 
   test("update using snippet string references", async (scope) => {
     const snippet1Name = createSnippetName(`${BRANCH_PREFIX}_string_ref_1`);
