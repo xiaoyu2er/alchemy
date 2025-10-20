@@ -1,0 +1,732 @@
+---
+title: Snippet
+description: Learn how to deploy, manage, and execute lightweight JavaScript code at the edge with Cloudflare Snippets for request/response modification.
+---
+
+Execute lightweight JavaScript code at the edge. [Cloudflare Snippets](https://developers.cloudflare.com/rules/snippets/) run directly on Cloudflare's network to modify HTTP requests and responses without touching your origin server.
+
+## Quick Start
+
+Deploy a basic snippet that modifies response headers:
+
+```ts
+import { Snippet } from "alchemy/cloudflare";
+
+const snippet = await Snippet("cors-handler", {
+  zone: "example.com",  // Zone ID, hostname, or Zone resource
+  name: "cors-handler",
+  script: `
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    return response;
+  }
+}
+  `.trim(),
+});
+```
+
+This creates a snippet that:
+- Runs on every request to your zone
+- Adds a CORS header to responses
+- Takes < 5ms to execute
+- Requires no changes to your origin
+
+:::caution[Plan Requirement]
+Snippets are available on **Pro, Business, and Enterprise plans only**. Not available on Free plan.
+:::
+
+:::tip
+Snippets are perfect for quick edge logic: adding headers, JWT validation, redirects, or response modification without the overhead of a full Worker.
+:::
+
+## Snippet Configuration
+
+Configure all aspects of your snippet including zone targeting, code source, and adoption behavior:
+
+```ts
+import { Snippet } from "alchemy/cloudflare";
+
+const snippet = await Snippet("my-snippet", {
+  zone: "example.com",                    // Zone ID, hostname, or Zone resource (required)
+  name: "my_snippet",                     // Snippet name (defaults to ${app}-${stage}-${id} with underscores)
+  
+  // Code source - provide exactly one of these:
+  script: `                               // Inline JavaScript code
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    response.headers.set("X-Custom-Header", "value");
+    return response;
+  }
+}
+  `.trim(),
+  
+  // OR
+  entrypoint: "./src/snippets/auth.js",   // Path to JavaScript file
+  
+  // Optional configuration
+  adopt: true,                            // Adopt existing snippet with same name (default: false)
+  
+  // Cloudflare API credentials (optional - uses environment variables by default)
+  accountId: "your-account-id",           // Cloudflare account ID (default: CLOUDFLARE_ACCOUNT_ID env var)
+  apiToken: "your-api-token",             // Cloudflare API token (default: CLOUDFLARE_API_TOKEN env var)
+});
+```
+
+**Important Notes:**
+
+⚠️ **Either `script` or `entrypoint` must be provided** (not both). Use `script` for inline code or `entrypoint` for file-based snippets.
+
+**Name Format Rules:**
+- Only lowercase letters (a-z), numbers (0-9), and underscores (_)
+- Max 50 characters
+- Hyphens in default names are automatically converted to underscores
+
+:::caution
+Snippets without SnippetRules never execute. Always create rules to activate your snippets.
+:::
+
+## Execution Order
+
+Snippets execute **after** these Cloudflare features in this order:
+1. Single Redirects
+2. URL Rewrite Rules
+3. Configuration Rules
+4. Origin Rules
+5. Bulk Redirects
+6. Managed Transforms
+7. Request Header Transform Rules
+8. Cache Rules
+
+This means Snippets see requests after they've been processed by these rules.
+
+## Zone Specification
+
+Specify the zone where your snippet runs using any format:
+
+```ts
+// Zone ID (fastest - no lookup needed)
+await Snippet("snippet-1", {
+  zone: "023e105f4ecef8ad9ca31a8372d0c353",
+  name: "snippet-1",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+
+// Zone hostname (auto-resolved)
+await Snippet("snippet-2", {
+  zone: "example.com",
+  name: "snippet-2",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+
+// Zone resource (Alchemy composition)
+const zone = await Zone("main", { name: "example.com", type: "full" });
+await Snippet("snippet-3", {
+  zone,
+  name: "snippet-3",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+```
+
+:::note
+Zone IDs (32-char hex strings) don't need API lookups. Hostnames are convenient but require an extra API call to resolve. Zone resources are Alchemy-native and compose well with other resources.
+:::
+
+## Basic Snippet Examples
+
+### Add Security Headers
+
+```ts
+const securityHeaders = await Snippet("security-headers", {
+  zone: "example.com",
+  name: "security-headers",
+  script: `
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    response.headers.set("X-XSS-Protection", "1; mode=block");
+    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    
+    return response;
+  }
+}
+  `.trim(),
+});
+```
+
+### JWT Validation
+
+```ts
+const jwtValidator = await Snippet("jwt-validator", {
+  zone: "example.com",
+  name: "jwt-validator",
+  script: `
+export default {
+  async fetch(request) {
+    const token = request.headers.get("Authorization")?.replace("Bearer ", "");
+    
+    if (!token) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    
+    // Validate JWT (simplified - use a proper JWT library in production)
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) throw new Error("Invalid JWT format");
+      
+      // In production, verify the signature
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // Continue to origin
+      const response = await fetch(request);
+      response.headers.set("X-User-ID", payload.sub);
+      
+      return response;
+    } catch (error) {
+      return new Response("Invalid token", { status: 403 });
+    }
+  }
+}
+  `.trim(),
+});
+```
+
+### Custom Redirects
+
+```ts
+const redirector = await Snippet("smart-redirects", {
+  zone: "example.com",
+  name: "smart-redirects",
+  script: `
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    
+    // Redirect old URLs to new location
+    if (url.pathname.startsWith("/old-blog/")) {
+      const newPath = url.pathname.replace("/old-blog/", "/blog/");
+      return Response.redirect(url.origin + newPath, 301);
+    }
+    
+    // Mobile redirect
+    if (request.headers.get("User-Agent")?.includes("Mobile")) {
+      if (!url.hostname.startsWith("m.")) {
+        return Response.redirect("https://m." + url.hostname + url.pathname, 302);
+      }
+    }
+    
+    return fetch(request);
+  }
+}
+  `.trim(),
+});
+```
+
+## Load from File
+
+Store your snippet code in a separate file for easier management:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const scriptContent = await readFile(
+  resolve("./src/snippets/auth-handler.js"),
+  "utf-8"
+);
+
+const authSnippet = await Snippet("auth-handler", {
+  zone: "example.com",
+  name: "auth-handler",
+  script: scriptContent,
+});
+```
+
+**Snippet file:** `./src/snippets/auth-handler.js`
+```js
+export default {
+  async fetch(request) {
+    const token = request.headers.get("Authorization");
+    if (!token) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    return fetch(request);
+  }
+}
+```
+
+## Performance Constraints
+
+Snippets have strict limits to maintain edge performance:
+
+| Limit | Value |
+|-------|-------|
+| Execution time | 5 ms |
+| Memory | 2 MB |
+| Total code size | 32 KB |
+| Subrequests | 2-5 (by plan) |
+
+**Plan limits:**
+- **Pro**: 25 snippets/zone, 2 subrequests
+- **Business**: 50 snippets/zone, 3 subrequests
+- **Enterprise**: 300 snippets/zone, 5 subrequests
+
+:::caution[Subrequest Chain]
+When using `fetch` in a snippet, it's important to remember that `fetch` itself is a subrequest. If you need to make multiple subrequests, you must ensure you stay within the subrequest limit.
+:::
+
+Keep your code lightweight:
+
+```ts
+// ❌ Too slow - expensive computation
+export default {
+  async fetch(request) {
+    const result = await expensiveQuery();  // Don't do this
+    return new Response(result);
+  }
+}
+
+// ✅ Lightweight - fast headers and redirects
+export default {
+  async fetch(request) {
+    if (request.url.includes("/admin")) {
+      return Response.redirect("/");
+    }
+    return fetch(request);
+  }
+}
+```
+
+## Adoption Pattern
+
+Already have snippets? Adopt them instead of failing:
+
+```ts
+const existing = await Snippet("legacy-snippet", {
+  zone: "example.com",
+  name: "legacy-snippet",  // Must match existing snippet name
+  script: "...",
+  adopt: true,  // Use existing if found, don't error
+});
+```
+
+:::note
+Adoption matches by exact snippet name. If a snippet with that name exists, it updates with the new configuration instead of failing.
+:::
+
+## Validation & Error Handling
+
+Snippets validate name format before deployment:
+
+```ts
+// ❌ Invalid - contains hyphens
+await Snippet("bad-name", {
+  zone: "example.com",
+  name: "bad-name",  // Error: invalid characters
+  script: "...",
+});
+
+// ✅ Valid - lowercase, letters, numbers, underscores
+await Snippet("auth_handler", {
+  zone: "example.com",
+  name: "auth_handler",
+  script: "...",
+});
+```
+
+**Valid name format:**
+- Lowercase letters (a-z)
+- Numbers (0-9)
+- Underscores (_)
+- Max 50 characters
+
+## Binding to Workers
+
+Use snippets in Workers via environment references:
+
+```ts
+// alchemy.run.ts
+const authSnippet = await Snippet("auth-checker", {
+  zone: "example.com",
+  name: "auth-checker",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+
+export const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    SNIPPET_NAME: "auth-checker",  // Reference by name
+  }
+});
+```
+
+Then access in your worker:
+
+```ts
+// src/api.ts
+export default {
+  async fetch(request: Request, env: typeof worker.Env) {
+    console.log(`Using snippet: ${env.SNIPPET_NAME}`);
+    return new Response("OK");
+  }
+}
+```
+
+## Working with Snippet Rules
+
+Snippets without rules do nothing. Use `SnippetRule` to control when they execute:
+
+```ts
+import { Snippet, SnippetRule } from "alchemy/cloudflare";
+
+// Create snippet
+const snippet = await Snippet("cache-buster", {
+  zone: "example.com",
+  name: "cache-buster",
+  script: `
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    response.headers.set("Cache-Control", "no-cache");
+    return response;
+  }
+}
+  `.trim(),
+});
+
+// Attach execution rules
+const rules = await SnippetRule("cache-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet,  // Reference the snippet resource
+      description: "Bypass cache for API endpoints",
+      enabled: true,
+    },
+  ],
+});
+```
+
+:::tip
+See [SnippetRule](/providers/cloudflare/snippet-rule) for detailed rule configuration and execution control.
+:::
+
+## Advanced Patterns
+
+### Conditional Response Caching
+
+Cache responses based on custom logic:
+
+```ts
+const responseCacher = await Snippet("smart-cache", {
+  zone: "example.com",
+  name: "smart-cache",
+  script: `
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    const response = await fetch(request);
+    
+    // Don't cache error responses
+    if (response.status >= 400) {
+      return response;
+    }
+    
+    // Cache GET requests for 1 hour
+    if (request.method === "GET") {
+      response.headers.set("Cache-Control", "public, max-age=3600");
+    }
+    
+    // Don't cache mutations
+    if (["POST", "PUT", "DELETE"].includes(request.method)) {
+      response.headers.set("Cache-Control", "no-cache");
+    }
+    
+    return response;
+  }
+}
+  `.trim(),
+});
+```
+
+### Request Transformation
+
+Modify incoming requests before they reach your origin:
+
+```ts
+const requestTransformer = await Snippet("request-modifier", {
+  zone: "example.com",
+  name: "request-modifier",
+  script: `
+export default {
+  async fetch(request) {
+    // Normalize headers
+    const newRequest = new Request(request, {
+      headers: new Headers(request.headers),
+    });
+    
+    newRequest.headers.set("X-Forwarded-Proto", "https");
+    newRequest.headers.set("X-Forwarded-Host", request.headers.get("Host"));
+    
+    // Add request ID
+    newRequest.headers.set("X-Request-ID", crypto.randomUUID());
+    
+    return fetch(newRequest);
+  }
+}
+  `.trim(),
+});
+```
+
+### Request/Response Logging
+
+Log requests/responses for debugging:
+
+```ts
+const logger = await Snippet("request-logger", {
+  zone: "example.com",
+  name: "request-logger",
+  script: `
+export default {
+  async fetch(request) {
+    const start = performance.now();
+    const response = await fetch(request);
+    const duration = performance.now() - start;
+    
+    // Log to console (visible in Cloudflare Logs)
+    console.log(\`\${request.method} \${request.url} - \${response.status} (\${duration.toFixed(2)}ms)\`);
+    
+    return response;
+  }
+}
+  `.trim(),
+});
+```
+
+## Debugging Snippets
+
+### Test with SnippetRule
+
+Use rule expressions to test snippet behavior on specific traffic:
+
+```ts
+const testSnippet = await Snippet("debug-snippet", {
+  zone: "example.com",
+  name: "debug-snippet",
+  script: `
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    // Add debugging headers
+    response.headers.set("X-Snippet-Executed", "true");
+    response.headers.set("X-Request-Time", new Date().toISOString());
+    return response;
+  }
+}
+  `.trim(),
+  adopt: true,
+});
+
+// Test on specific paths only
+const rules = await SnippetRule("debug-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/debug"',  // Only test path
+      snippet: testSnippet,
+      enabled: true,
+    },
+  ],
+});
+```
+
+### Performance Monitoring
+
+Monitor snippet execution in your logs:
+
+```ts
+const monitored = await Snippet("perf-monitor", {
+  zone: "example.com",
+  name: "perf-monitor",
+  script: `
+export default {
+  async fetch(request) {
+    const start = Date.now();
+    const response = await fetch(request);
+    const duration = Date.now() - start;
+    
+    if (duration > 100) {
+      console.warn(\`Slow response: \${duration}ms for \${request.url}\`);
+    }
+    
+    return response;
+  }
+}
+  `.trim(),
+});
+```
+
+## Troubleshooting
+
+### Snippet Not Executing
+
+Snippet created but not running? Check the rules:
+
+```ts
+// ❌ No rules = no execution
+await Snippet("orphaned", {
+  zone: "example.com",
+  name: "orphaned",
+  script: "...",
+});
+
+// ✅ Attach execution rules
+const snippet = await Snippet("active", {
+  zone: "example.com",
+  name: "active",
+  script: "...",
+});
+
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [{ expression: "true", snippet }],  // Now it runs
+});
+```
+
+### Performance Timeout (5ms Exceeded)
+
+Snippet execution takes too long:
+
+**Common causes:**
+1. **Multiple subrequests** - Keep fetch calls under limit
+2. **Complex regex** - Use simple string matching instead
+3. **Large payloads** - Process in chunks, not all at once
+
+**Fix:**
+```ts
+// ❌ Too slow - multiple fetches
+export default {
+  async fetch(request) {
+    const r1 = await fetch("https://api.example.com/1");
+    const r2 = await fetch("https://api.example.com/2");
+    return new Response(JSON.stringify({ r1, r2 }));
+  }
+}
+
+// ✅ Fast - single operation
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/api") {
+      return new Response("cached", { headers: { "Cache-Control": "max-age=3600" } });
+    }
+    return fetch(request);
+  }
+}
+```
+
+### Memory Issues (2MB Exceeded)
+
+Snippet hits memory limit:
+
+**Common causes:**
+1. **Large response buffering** - Stream instead of buffer
+2. **Unnecessary data structures** - Keep code minimal
+3. **Base64 encoding** - Use binary formats
+
+**Fix:**
+```ts
+// ❌ Buffers entire response
+export default {
+  async fetch(request) {
+    const response = await fetch(request);
+    const body = await response.text();  // Loads entire body into memory
+    return new Response(body);
+  }
+}
+
+// ✅ Streams response
+export default {
+  async fetch(request) {
+    return fetch(request);  // Streams directly to client
+  }
+}
+```
+
+### Code Size Limit (32KB Exceeded)
+
+Your snippet is too large:
+
+**Common causes:**
+1. **Inline data** - Move to separate file or KV store
+2. **Unused libraries** - Trim dependencies
+3. **Comments/formatting** - Minify before deploy
+
+**Fix:**
+```ts
+// Split large snippets into multiple smaller ones
+const snippet1 = await Snippet("auth", {
+  zone: "example.com",
+  name: "auth",
+  script: "/* auth only */",
+});
+
+const snippet2 = await Snippet("headers", {
+  zone: "example.com",
+  name: "headers",
+  script: "/* headers only */",
+});
+
+await SnippetRule("orchestration", {
+  zone: "example.com",
+  rules: [
+    { expression: 'http.request.uri.path eq "/auth"', snippet: snippet1 },
+    { expression: "true", snippet: snippet2 },
+  ],
+});
+```
+
+### Invalid Characters in Name
+
+Snippet name validation error:
+
+```ts
+// ❌ Invalid characters
+await Snippet("bad", {
+  zone: "example.com",
+  name: "my-snippet",  // Error: hyphens not allowed
+  script: "...",
+});
+
+// ✅ Valid name
+await Snippet("good", {
+  zone: "example.com",
+  name: "my_snippet",  // Letters, numbers, underscores only
+  script: "...",
+});
+```
+
+## Best Practices
+
+1. **Keep snippets small** - One concern per snippet for easier testing
+2. **Use rules to target traffic** - Don't waste CPU on requests that don't need the snippet
+3. **Cache aggressively** - Let Cloudflare cache static responses
+4. **Test edge cases** - Test with actual traffic patterns before production
+5. **Monitor performance** - Track execution time and optimize slow paths
+6. **Version your code** - Keep git history of snippet deployments
+7. **Avoid sync operations** - Always use async/await for I/O
+8. **Use secrets for sensitive data** - Don't hardcode API keys
+9. **Plan availability** - Snippets are only available on Pro, Business, and Enterprise plans.
+10. **No version rollback** - Cloudflare doesn't support versioning for Snippets. Test carefully before deploying changes.
+
+## Next steps
+
+- **Snippet Rules**: See [SnippetRule](/providers/cloudflare/snippet-rule) for execution control
+- **Workers**: See [Worker](/providers/cloudflare/worker) for more complex edge logic
+- **Zones**: See [Zone](/providers/cloudflare/zone) for zone management

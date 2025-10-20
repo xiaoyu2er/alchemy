@@ -1,0 +1,839 @@
+---
+title: SnippetRule
+description: Learn how to manage and orchestrate Cloudflare Snippet Rules to control execution order and conditions for edge JavaScript execution.
+---
+
+Control when and where your Snippets execute. [Snippet Rules](https://developers.cloudflare.com/rules/snippets/) define the conditions under which your edge JavaScript runs, and critically, the **order** in which rules are evaluated.
+
+Snippets without rules never execute. SnippetRule gives you granular control over execution flow at the zone level.
+
+## Quick Start
+
+Create a set of rules that execute snippets conditionally:
+
+```ts
+import { Snippet, SnippetRule } from "alchemy/cloudflare";
+
+// Create snippets
+const authSnippet = await Snippet("auth", {
+  zone: "example.com",
+  name: "auth",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+
+const corsSnippet = await Snippet("cors", {
+  zone: "example.com",
+  name: "cors",
+  script: "export default { async fetch(r) { return fetch(r); } }",
+});
+
+// Orchestrate execution with rules
+const rules = await SnippetRule("api-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+      description: "Validate auth on API endpoints",
+      enabled: true,
+    },
+    {
+      expression: 'http.request.uri.path contains "/api"',
+      snippet: corsSnippet,
+      description: "Add CORS headers to API responses",
+      enabled: true,
+    },
+  ],
+});
+```
+
+**Key points:**
+- Rules execute in **array order** - first rule first, last rule last
+- Rules are **zone-level** - you manage all rules for a zone in one batch
+- Each snippet is referenced by name or resource
+- Order determines execution flow
+
+:::tip
+Use SnippetRule to compose multiple snippets into a processing pipeline. The order matters: auth before caching, headers before response modification.
+:::
+
+:::caution[Plan Requirement]
+SnippetRules are available on **Pro, Business, and Enterprise plans only**. Not available on Free plan.
+:::
+
+## Execution Order
+
+Snippet Rules execute **after** these Cloudflare features:
+1. Single Redirects
+2. URL Rewrite Rules
+3. Configuration Rules
+4. Origin Rules
+5. Bulk Redirects
+6. Managed Transforms
+7. Request Header Transform Rules
+8. Cache Rules
+
+This means rules evaluate requests after they've been processed by these features.
+
+## SnippetRule Configuration
+
+Configure rule batches with expressions, snippet references, and execution control:
+
+```ts
+import { Snippet, SnippetRule } from "alchemy/cloudflare";
+
+const rules = await SnippetRule("api-rules", {
+  zone: "example.com",                    // Zone ID, hostname, or Zone resource (required)
+  
+  rules: [                                // Array of rules (order determines execution sequence)
+    {
+      expression: 'http.request.uri.path eq "/api"',  // Filter expression (required)
+      snippet: authSnippet,               // Snippet resource or string name (required)
+      description: "Validate API auth",   // Human-readable description (optional)
+      enabled: true,                      // Enable/disable rule (default: true)
+    },
+    {
+      expression: 'http.request.method eq "POST"',
+      snippet: "validation_handler",      // String reference to snippet name
+      description: "Validate POST data",
+      enabled: true,
+    },
+    {
+      expression: "true",                 // Catch-all expression
+      snippet: loggingSnippet,
+      description: "Log all requests",
+      enabled: false,                     // Rule exists but won't execute
+    },
+  ],
+  
+  // Optional configuration
+  adopt: true,                            // Adopt existing rules (default: false)
+  
+  // Cloudflare API credentials (optional - uses environment variables by default)
+  accountId: "your-account-id",           // Cloudflare account ID (default: CLOUDFLARE_ACCOUNT_ID env var)
+  apiToken: "your-api-token",             // Cloudflare API token (default: CLOUDFLARE_API_TOKEN env var)
+});
+```
+
+**Expression Language:**
+
+Rules use [Cloudflare's Filter Expression Language](https://developers.cloudflare.com/ruleset-engine/rules-language/) supporting:
+- **Path matching**: `http.request.uri.path eq "/api"`
+- **Header checks**: `http.request.headers["User-Agent"] contains "bot"`
+- **Country filtering**: `cf.country in ("US" "CA" "MX")`
+- **Method filtering**: `http.request.method eq "POST"`
+- **Complex logic**: `(condition1 and condition2) or condition3`
+
+:::caution
+Rules execute in **array order**. First rule in the array executes first. Changing the order changes execution behavior.
+:::
+
+## Understanding Zone-Level Rules
+
+Unlike individual resources, SnippetRule manages **all snippet rules for a zone** in a single batch operation. This is how Cloudflare's API works:
+
+```ts
+// You define the complete rule set for the zone
+const rules = await SnippetRule("orchestration", {
+  zone: "example.com",
+  rules: [
+    // Rule 1 - runs first
+    { expression: 'http.request.uri.path eq "/admin"', snippet: "auth" },
+    // Rule 2 - runs second
+    { expression: 'http.request.uri.path contains "/api"', snippet: "cors" },
+    // Rule 3 - runs third
+    { expression: "true", snippet: "logging" },
+  ],
+});
+
+// Update replaces the entire zone's rule set
+const updated = await SnippetRule("orchestration", {
+  zone: "example.com",
+  rules: [
+    // New complete rule set - old rules are replaced
+    { expression: 'http.request.uri.path eq "/v2"', snippet: "v2_auth" },
+  ],
+});
+```
+
+**Why zone-level?** The Cloudflare API's `PUT /zones/{zone_id}/snippets/snippet_rules` endpoint updates all rules at once. Alchemy respects this design rather than adding complexity with per-rule updates.
+
+## Zone Specification
+
+Specify your zone using any format:
+
+```ts
+// Zone ID (fastest - direct)
+await SnippetRule("rules-1", {
+  zone: "023e105f4ecef8ad9ca31a8372d0c353",
+  rules: [{ expression: "true", snippet: "my-snippet" }],
+});
+
+// Zone hostname (auto-resolved)
+await SnippetRule("rules-2", {
+  zone: "example.com",
+  rules: [{ expression: "true", snippet: "my-snippet" }],
+});
+
+// Zone resource (Alchemy composition)
+const zone = await Zone("main", { name: "example.com", type: "full" });
+await SnippetRule("rules-3", {
+  zone,
+  rules: [{ expression: "true", snippet: "my-snippet" }],
+});
+```
+
+:::note
+Zone IDs are fastest (no lookup). Hostnames are convenient but trigger an API call to resolve. Zone resources integrate best with other Alchemy resources.
+:::
+
+## Rule Expressions
+
+Control execution with Cloudflare's powerful filter language:
+
+### Exact Path Matching
+
+```ts
+const rules = await SnippetRule("path-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api/users"',
+      snippet: authSnippet,
+      description: "Auth for exact path",
+    },
+    {
+      expression: 'http.request.uri.path eq "/admin"',
+      snippet: adminSnippet,
+      description: "Admin auth",
+    },
+  ],
+});
+```
+
+### Path Prefixes
+
+```ts
+const rules = await SnippetRule("prefix-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path starts_with "/api/"',
+      snippet: apiAuthSnippet,
+      description: "Auth all /api/* paths",
+    },
+    {
+      expression: 'http.request.uri.path starts_with "/admin/"',
+      snippet: adminSnippet,
+      description: "Auth all /admin/* paths",
+    },
+  ],
+});
+```
+
+### Contains Pattern
+
+```ts
+const rules = await SnippetRule("pattern-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path contains "download"',
+      snippet: downloadSnippet,
+      description: "Handle downloads",
+    },
+    {
+      expression: 'http.request.uri.query contains "debug=true"',
+      snippet: debugSnippet,
+      description: "Debug mode",
+    },
+  ],
+});
+```
+
+### Header-Based Rules
+
+```ts
+const rules = await SnippetRule("header-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.headers["User-Agent"] contains "bot"',
+      snippet: botSnippet,
+      description: "Handle bots",
+    },
+    {
+      expression: 'http.request.headers["X-API-Version"] eq "v2"',
+      snippet: v2ApiSnippet,
+      description: "API v2 handler",
+    },
+    {
+      expression: 'http.request.headers["X-Forwarded-Proto"] eq "https"',
+      snippet: secureSnippet,
+      description: "HTTPS-only handler",
+    },
+  ],
+});
+```
+
+### Country/IP-Based Rules
+
+```ts
+const rules = await SnippetRule("geo-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'cf.country eq "US"',
+      snippet: usSnippet,
+      description: "US-specific handling",
+    },
+    {
+      expression: 'cf.country in ("UK" "DE" "FR")',
+      snippet: euSnippet,
+      description: "EU-specific handling (GDPR)",
+    },
+    {
+      expression: 'ip.geoip.is_datacenter',
+      snippet: dcSnippet,
+      description: "Datacenter traffic",
+    },
+  ],
+});
+```
+
+### Method-Based Rules
+
+```ts
+const rules = await SnippetRule("method-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.method eq "POST"',
+      snippet: postSnippet,
+      description: "POST request handling",
+    },
+    {
+      expression: 'http.request.method in ("PUT" "PATCH" "DELETE")',
+      snippet: mutationSnippet,
+      description: "Mutation request handling",
+    },
+    {
+      expression: 'http.request.method eq "OPTIONS"',
+      snippet: corsPreflightSnippet,
+      description: "CORS preflight",
+    },
+  ],
+});
+```
+
+### Complex Combinations
+
+```ts
+const rules = await SnippetRule("complex-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: `http.request.uri.path starts_with "/api/" and http.request.method eq "POST"`,
+      snippet: apiCreateSnippet,
+      description: "API creation endpoint",
+    },
+    {
+      expression: `(cf.country in ("US" "CA" "MX")) and (http.request.headers["X-Premium"] eq "true")`,
+      snippet: premiumNorthAmericaSnippet,
+      description: "Premium North American users",
+    },
+    {
+      expression: `http.request.uri.path starts_with "/api/" and not http.request.headers["Authorization"] contains "Bearer"`,
+      snippet: apiAuthErrorSnippet,
+      description: "Catch missing auth",
+    },
+  ],
+});
+```
+
+:::tip
+See [Cloudflare Filter Expression Language](https://developers.cloudflare.com/ruleset-engine/rules-language/) for complete expression reference.
+:::
+
+## Execution Order (Critical!)
+
+**The order of rules in your array is the order they execute.** This is the key to SnippetRule DX:
+
+```ts
+const rules = await SnippetRule("pipeline", {
+  zone: "example.com",
+  rules: [
+    // 1. FIRST - Validate auth early
+    {
+      expression: 'http.request.uri.path eq "/api/protected"',
+      snippet: authSnippet,
+      description: "1. Validate auth (first)",
+    },
+    // 2. SECOND - Validate input
+    {
+      expression: 'http.request.uri.path eq "/api/protected"',
+      snippet: validationSnippet,
+      description: "2. Validate input (second)",
+    },
+    // 3. THIRD - Log request
+    {
+      expression: 'http.request.uri.path eq "/api/protected"',
+      snippet: loggingSnippet,
+      description: "3. Log request (third)",
+    },
+    // 4. FOURTH - Call origin (implicit - no snippet matches)
+  ],
+});
+```
+
+**Execution flow:**
+```
+Request arrives
+  ↓
+Rule 1 (auth) - checks expression, if matches runs authSnippet
+  ↓
+Rule 2 (validation) - checks expression, if matches runs validationSnippet
+  ↓
+Rule 3 (logging) - checks expression, if matches runs loggingSnippet
+  ↓
+Response sent
+```
+
+## Reordering Rules
+
+Change the execution order by reordering the array:
+
+```ts
+// Original order
+let rules = await SnippetRule("order", {
+  zone: "example.com",
+  rules: [
+    { expression: "true", snippet: snippetA },  // 1st
+    { expression: "true", snippet: snippetB },  // 2nd
+    { expression: "true", snippet: snippetC },  // 3rd
+  ],
+});
+
+// Change order - reorder the array
+rules = await SnippetRule("order", {
+  zone: "example.com",
+  rules: [
+    { expression: "true", snippet: snippetC },  // Now 1st
+    { expression: "true", snippet: snippetA },  // Now 2nd
+    { expression: "true", snippet: snippetB },  // Now 3rd
+  ],
+});
+
+// The resource maintains atomicity - all rules update together
+```
+
+:::caution
+Reordering is atomic - the entire zone's rules update together. No partial states.
+:::
+
+## Snippets as References
+
+Reference snippets by Snippet resource or by string name:
+
+```ts
+// Create snippet resources
+const authSnippet = await Snippet("auth", {
+  zone: "example.com",
+  name: "auth_handler",
+  script: "...",
+});
+
+const corsSnippet = await Snippet("cors", {
+  zone: "example.com",
+  name: "cors_handler",
+  script: "...",
+});
+
+// Reference by resource (best - type-safe)
+await SnippetRule("rules-typed", {
+  zone: "example.com",
+  rules: [
+    { expression: 'http.request.uri.path eq "/api"', snippet: authSnippet },
+    { expression: "true", snippet: corsSnippet },
+  ],
+});
+
+// Reference by string name (convenient)
+await SnippetRule("rules-strings", {
+  zone: "example.com",
+  rules: [
+    { expression: 'http.request.uri.path eq "/api"', snippet: "auth_handler" },
+    { expression: "true", snippet: "cors_handler" },
+  ],
+});
+```
+
+**Best practice:** Use resources for composition, strings for one-off references.
+
+## Descriptions & Organization
+
+Document your rules for future maintenance:
+
+```ts
+const rules = await SnippetRule("documented", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path starts_with "/api/"',
+      snippet: authSnippet,
+      description: "Validate JWT token for all API requests",
+      enabled: true,
+    },
+    {
+      expression: 'http.request.uri.path contains "/webhook"',
+      snippet: webhookSnippet,
+      description: "Verify webhook signature before processing",
+      enabled: true,
+    },
+    {
+      expression: "true",
+      snippet: corsSnippet,
+      description: "Add CORS headers to all responses",
+      enabled: true,
+    },
+  ],
+});
+```
+
+## Enable/Disable Rules
+
+Control rule execution without deletion:
+
+```ts
+const rules = await SnippetRule("toggles", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+      enabled: true,   // This runs
+    },
+    {
+      expression: 'http.request.uri.path eq "/debug"',
+      snippet: debugSnippet,
+      enabled: false,  // This is skipped
+    },
+  ],
+});
+
+// Later, enable debug mode
+const updated = await SnippetRule("toggles", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+      enabled: true,
+    },
+    {
+      expression: 'http.request.uri.path eq "/debug"',
+      snippet: debugSnippet,
+      enabled: true,  // Now it runs
+    },
+  ],
+});
+```
+
+## Empty Rules (Clear All)
+
+Remove all rules from a zone:
+
+```ts
+// Clear all rules
+const cleared = await SnippetRule("empty-rules", {
+  zone: "example.com",
+  rules: [],  // Empty array = remove all rules
+});
+
+// Restore later
+const restored = await SnippetRule("empty-rules", {
+  zone: "example.com",
+  rules: [
+    { expression: "true", snippet: mySnippet },
+  ],
+});
+```
+
+:::warning
+Clearing rules with `rules: []` removes all snippets from execution. Snippets still exist but won't run until rules are re-added.
+:::
+
+## Adoption Pattern
+
+Adopt existing rules to prevent conflicts:
+
+```ts
+const rules = await SnippetRule("production-rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+    },
+  ],
+  adopt: true,  // Use existing rules if present, don't error
+});
+```
+
+:::note
+When `adopt: true`, SnippetRule will update any existing rules rather than failing on conflict.
+:::
+
+## Update & Reorder Patterns
+
+### A/B Testing with Rules
+
+```ts
+const abTestRules = await SnippetRule("ab-test", {
+  zone: "example.com",
+  rules: [
+    // 50/50 split
+    {
+      expression: 'cf.random() < 0.5',
+      snippet: variantASnippet,
+      description: "A/B Test - Variant A (50%)",
+    },
+    {
+      expression: 'cf.random() >= 0.5',
+      snippet: variantBSnippet,
+      description: "A/B Test - Variant B (50%)",
+    },
+  ],
+});
+```
+
+### Canary Deployment
+
+```ts
+const canaryRules = await SnippetRule("canary", {
+  zone: "example.com",
+  rules: [
+    // 5% traffic to new version
+    {
+      expression: 'cf.random() < 0.05',
+      snippet: newVersionSnippet,
+      description: "Canary - new version (5%)",
+    },
+    // 95% traffic to stable version
+    {
+      expression: true,
+      snippet: stableVersionSnippet,
+      description: "Canary - stable version (95%)",
+    },
+  ],
+});
+
+// Later, increase canary to 50%
+const increased = await SnippetRule("canary", {
+  zone: "example.com",
+  rules: [
+    // Now 50% traffic to new version
+    {
+      expression: 'cf.random() < 0.5',
+      snippet: newVersionSnippet,
+      description: "Canary - new version (50%)",
+    },
+    // 50% traffic to stable version
+    {
+      expression: true,
+      snippet: stableVersionSnippet,
+      description: "Canary - stable version (50%)",
+    },
+  ],
+});
+```
+
+### Feature Flags
+
+```ts
+const featureFlags = await SnippetRule("features", {
+  zone: "example.com",
+  rules: [
+    // Feature A - enabled for specific users
+    {
+      expression: 'http.request.headers["X-User-ID"] in ("user-1" "user-2" "user-3")',
+      snippet: featureASnippet,
+      description: "Feature A - beta testing",
+      enabled: true,
+    },
+    // Feature B - enabled in specific region
+    {
+      expression: 'cf.country in ("US" "CA")',
+      snippet: featureBSnippet,
+      description: "Feature B - North America only",
+      enabled: true,
+    },
+    // Default behavior
+    {
+      expression: "true",
+      snippet: defaultSnippet,
+      description: "Default behavior",
+      enabled: true,
+    },
+  ],
+});
+```
+
+## Error Handling
+
+### Duplicate Rules Prevention
+
+Duplicate rule definitions are detected and error:
+
+```ts
+// ❌ Error - duplicate rules
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+    },
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,  // Error: duplicate
+    },
+  ],
+});
+
+// ✅ Correct - unique combinations
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: 'http.request.uri.path eq "/api"',
+      snippet: authSnippet,
+    },
+    {
+      expression: 'http.request.uri.path contains "/api"',  // Different expression
+      snippet: loggingSnippet,
+    },
+  ],
+});
+```
+
+## Troubleshooting
+
+### Rules Not Executing
+
+Rules created but snippets aren't running?
+
+```ts
+// ❌ Problem: Empty rules
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [],  // No rules = no execution
+});
+
+// ✅ Solution: Add matching rules
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: "true",  // Match all requests
+      snippet: mySnippet,
+      enabled: true,
+    },
+  ],
+});
+```
+
+### Wrong Execution Order
+
+Check if rules are in the correct order:
+
+```ts
+// ❌ Problem: Wrong order - logging before auth
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    { expression: "true", snippet: loggingSnippet },    // Runs 1st
+    { expression: "true", snippet: authSnippet },       // Runs 2nd (too late)
+  ],
+});
+
+// ✅ Solution: Reorder correctly
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    { expression: "true", snippet: authSnippet },       // Runs 1st
+    { expression: "true", snippet: loggingSnippet },    // Runs 2nd
+  ],
+});
+```
+
+### Expression Syntax Error
+
+Invalid filter expression?
+
+```ts
+// ❌ Error: Invalid syntax
+{
+  expression: 'http.request.path eq "/api"',  // "path" is wrong
+  snippet: mySnippet,
+}
+
+// ✅ Correct
+{
+  expression: 'http.request.uri.path eq "/api"',  // Use "uri.path"
+  snippet: mySnippet,
+}
+```
+
+### Snippet Not Found
+
+Referenced snippet doesn't exist:
+
+```ts
+// ❌ Error: Snippet name doesn't exist
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: "true",
+      snippet: "nonexistent-snippet",  // Must exist first
+    },
+  ],
+});
+
+// ✅ Solution: Create snippet first
+const snippet = await Snippet("auth", {
+  zone: "example.com",
+  name: "auth",  // This name must match
+  script: "...",
+});
+
+await SnippetRule("rules", {
+  zone: "example.com",
+  rules: [
+    {
+      expression: "true",
+      snippet: "auth",  // Now it exists
+    },
+  ],
+});
+```
+
+## Best Practices
+
+1. **Order matters** - Put authentication before logging, headers before response modification
+2. **Be specific** - Use precise expressions to avoid running snippets unnecessarily
+3. **Document rules** - Add descriptions explaining why each rule exists
+4. **Test before deploy** - Use feature flags and canary patterns for safe rollout
+5. **Keep it simple** - Complex expressions are hard to maintain
+6. **Name snippets clearly** - `auth_handler` not `snippet_1`
+7. **Monitor execution** - Add logging snippet to track rule flow
+8. **Plan availability** - SnippetRules only available on Pro, Business, Enterprise plans
+9. **No version rollback** - Cloudflare doesn't support versioning for Snippets/SnippetRules. Test rule changes carefully before deployment.
+
+## Next Steps
+
+- **Snippets**: See [Snippet](/providers/cloudflare/snippet) for snippet creation and examples
+- **Zones**: See [Zone](/providers/cloudflare/zone) for zone management
+- **Filter Language**: See [Cloudflare Filter Expression Language](https://developers.cloudflare.com/ruleset-engine/rules-language/) for full expression reference
+- Join the [Alchemy Discord](https://discord.gg/xGnGbfxq) to get help and share your experiences.
