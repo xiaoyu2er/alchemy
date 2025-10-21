@@ -168,6 +168,12 @@ async function createWorkersPreviewSession(api: CloudflareApi) {
       `Failed to create workers preview session: ${res.status} ${res.statusText}`,
     );
   }
-  const json: WorkersPreviewSession = await res.json();
-  return json;
+  try {
+    const json: WorkersPreviewSession = await res.json();
+    return json;
+  } catch (error) {
+    console.error(await res.text());
+    console.error("Error parsing workers preview session", error);
+    throw error;
+  }
 }
