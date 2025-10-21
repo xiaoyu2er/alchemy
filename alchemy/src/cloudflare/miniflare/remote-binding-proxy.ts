@@ -162,7 +162,11 @@ async function createWorkersPreviewSession(api: CloudflareApi) {
     "create workers preview session",
     api.get(`/accounts/${api.accountId}/workers/subdomain/edge-preview`),
   );
-  const res = await fetch(exchange_url);
+  const res = await fetch(exchange_url, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
   if (!res.ok) {
     throw new Error(
       `Failed to create workers preview session: ${res.status} ${res.statusText}`,
