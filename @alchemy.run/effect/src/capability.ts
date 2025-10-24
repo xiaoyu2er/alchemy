@@ -13,8 +13,12 @@ export const Capability = <Self extends Capability>(type: Self["type"]) =>
   (<R extends Resource | ResourceClass>(resource: R): Self =>
     ({
       type,
-      sid: `${type}-${resource.kind === "Resource" ? resource.id : resource.type}`,
-      label: `${type}(${resource.kind === "Resource" ? resource.id : resource.type})`,
+      sid: `${type}-${
+        resource.kind === "Resource" ? resource.id : resource.type
+      }`,
+      label: `${type}(${
+        resource.kind === "Resource" ? resource.id : resource.type
+      })`,
       resource,
       // label
     }) as any) as CapCtor<Self>;
@@ -27,7 +31,7 @@ export interface Capability<Type extends string = string, Resource = unknown> {
   type: Type;
   constructor: unknown; // Note: this is a necessary boilerplate -  we always need to be able to get the clean type constructor
   resource: Resource;
-  instance: Resource.Instance<this["resource"]>;
+  instance: this["resource"];
   sid: string;
   action: string;
   label: string;

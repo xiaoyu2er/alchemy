@@ -75,4 +75,9 @@ export const Bindings = <S extends any[]>(
   ...capabilities: S
 ): Policy<S[number]> => ({
   capabilities,
+  and: <C extends Capability[]>(...caps: C): Policy<C[number] | S[number]> =>
+    Bindings(...capabilities, ...caps),
 });
+
+export type $ = typeof $;
+export const $ = Bindings;

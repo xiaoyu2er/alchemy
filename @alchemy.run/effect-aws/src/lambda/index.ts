@@ -1,3 +1,4 @@
+export * from "./consume.ts";
 export * from "./function.client.ts";
 export * from "./function.handler.ts";
 export * from "./function.invoke.ts";

@@ -1,5 +1,13 @@
 import * as Alchemy from "@alchemy.run/effect";
-import { Binding, Capability, Provider, Runtime } from "@alchemy.run/effect";
+import {
+  Binding,
+  Capability,
+  Policy,
+  Provider,
+  Runtime,
+} from "@alchemy.run/effect";
+import type { Context as LambdaContext } from "aws-lambda";
+import type { Effect } from "effect/Effect";
 import * as IAM from "../iam.ts";
 
 export const FunctionType = "AWS.Lambda.Function";
@@ -42,12 +50,23 @@ export interface FunctionRuntime<
 export const FunctionRuntime = Runtime(FunctionType)<FunctionRuntime>();
 
 export const Function = <
-  S extends Alchemy.Service,
+  const ID extends string,
   const Props extends FunctionProps,
+  In,
+  Out,
+  Req,
 >(
-  service: S,
-  props: Props,
-) => Alchemy.bind(FunctionRuntime, service, props);
+  id: ID,
+  props: Props & {
+    bindings: Policy<Extract<Req, Capability>>;
+  },
+  handle: (input: In, context: LambdaContext) => Effect<Out, never, Req>,
+) =>
+  Alchemy.bind(
+    FunctionRuntime,
+    Alchemy.Service(id, handle, props.bindings),
+    props,
+  );
 
 export type FunctionProvider = Provider<
   FunctionRuntime<unknown, unknown, FunctionProps>

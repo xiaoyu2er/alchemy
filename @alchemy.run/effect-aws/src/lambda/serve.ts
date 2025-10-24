@@ -1,17 +1,31 @@
-import { Capability, Service, type Policy } from "@alchemy.run/effect";
-import * as Effect from "effect/Effect";
-
+import type { Capability, Policy } from "@alchemy.run/effect";
 import type {
   Context as LambdaContext,
   LambdaFunctionURLEvent,
   LambdaFunctionURLResult,
 } from "aws-lambda";
+import * as Effect from "effect/Effect";
+import * as Lambda from "./function.ts";
 
-export const serve = <const ID extends string, Req>(
+export const serve = <
+  const ID extends string,
+  const Props extends Lambda.FunctionProps,
+  Req,
+>(
   id: ID,
-  policy: Policy<Extract<Req, Capability>>,
-  handler: (
+  props: Props & {
+    bindings: Policy<Extract<Req, Capability>>;
+  },
+  fetch: (
     event: LambdaFunctionURLEvent,
     context: LambdaContext,
   ) => Effect.Effect<LambdaFunctionURLResult, never, Req>,
-) => Service(id, handler, policy);
+) =>
+  Lambda.Function(
+    id,
+    {
+      ...props,
+      url: true,
+    },
+    fetch,
+  );

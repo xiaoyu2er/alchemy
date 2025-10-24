@@ -7,6 +7,7 @@ export * from "./capability.ts";
 export * from "./destroy.ts";
 export * from "./dot-alchemy.ts";
 export * from "./event.ts";
+export * from "./omit.ts";
 export * from "./phase.ts";
 export * from "./plan.ts";
 export * from "./policy.ts";

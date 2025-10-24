@@ -1,14 +1,17 @@
-import { Bindings } from "@alchemy.run/effect";
+import { $ } from "@alchemy.run/effect";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as Effect from "effect/Effect";
 import { Messages } from "./messages.ts";
 
 // business logic
-export class Consumer extends SQS.consume(
-  Messages,
-  "consumer",
-  Bindings(SQS.SendMessage(Messages)),
+export class Consumer extends Lambda.consume(
+  "Consumer",
+  {
+    main: import.meta.filename,
+    queue: Messages,
+    bindings: $(SQS.SendMessage(Messages)),
+  },
   Effect.fn(function* (batch) {
     for (const record of batch.Records) {
       console.log(record);

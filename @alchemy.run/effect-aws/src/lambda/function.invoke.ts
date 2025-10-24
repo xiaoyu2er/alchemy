@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 
-import { allow, Capability } from "@alchemy.run/effect";
+import { Capability, policy } from "@alchemy.run/effect";
 import { FunctionClient } from "./function.client.ts";
 import { FunctionRuntime } from "./function.ts";
 
@@ -17,7 +17,7 @@ export const invoke = <F extends FunctionRuntime>(func: F, input: any) =>
   Effect.gen(function* () {
     const lambda = yield* FunctionClient;
     const functionArn = process.env[`${func.id}-functionArn`]!;
-    yield* allow<InvokeFunction<F>>();
+    yield* policy<InvokeFunction<F>>();
     return yield* lambda.invoke({
       FunctionName: functionArn,
       InvocationType: "RequestResponse",

@@ -57,7 +57,7 @@ export const bind = <
           >
     : never;
 
-  return Effect.gen(function* () {
+  const eff = Effect.gen(function* () {
     const self = {
       ...Run,
       id: Svc.id,
@@ -98,4 +98,13 @@ export const bind = <
     // distribute over each capability class and compute Runtime<Capability<Resource.class>
     Providers<Cap>
   >;
+  return Object.assign(
+    class {
+      static readonly props = Props;
+    },
+    eff,
+    {
+      pipe: eff.pipe.bind(eff),
+    },
+  );
 };

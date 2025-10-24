@@ -1,4 +1,4 @@
-import { Bindings } from "@alchemy.run/effect";
+import { $ } from "@alchemy.run/effect";
 import * as Lambda from "@alchemy.run/effect-aws/lambda";
 import * as SQS from "@alchemy.run/effect-aws/sqs";
 import * as Effect from "effect/Effect";
@@ -7,17 +7,22 @@ import { Message, Messages } from "./messages.ts";
 
 // Biz Logic (isolated) easy to test, portable, decoupled from physical infrastructure
 export class Api extends Lambda.serve(
-  "api",
-  Bindings(SQS.SendMessage(Messages)),
-  Effect.fn(function* (req) {
-    const msg = yield* S.validate(Message)(req.body).pipe(
+  "Api",
+  {
+    main: import.meta.filename,
+    bindings: $(SQS.SendMessage(Messages)),
+    // TODO(sam): wish it could be this, but inference seems to fail without .fn wrapper
+    // *fetch(req) { .. }
+  },
+  Effect.fn(function* (event, _ctx) {
+    // _ctx.getRemainingTimeInMillis()
+    const msg = yield* S.validate(Message)(event.body).pipe(
       Effect.catchAll(Effect.die),
     );
     yield* SQS.sendMessage(Messages, msg).pipe(
       Effect.catchAll(() => Effect.void),
     );
     return {
-      statusCode: 200,
       body: JSON.stringify(null),
     };
   }),

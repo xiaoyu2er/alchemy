@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { allow, Capability, type Resource } from "@alchemy.run/effect";
+import { Capability, Policy } from "@alchemy.run/effect";
 import { FunctionRuntime } from "../lambda/index.ts";
 import { QueueClient } from "./queue.client.ts";
 import { Queue } from "./queue.ts";
@@ -18,8 +18,7 @@ export const sendMessage = <Q extends Queue>(
   message: Q["props"]["schema"]["Type"],
 ) =>
   Effect.gen(function* () {
-    // TODO(sam): we want this to be a phantom and not explicitly in the Requirements
-    yield* allow<SendMessage<Resource.Instance<Q>>>();
+    yield* Policy.declare<SendMessage<Q>>();
     const sqs = yield* QueueClient;
     const url =
       process.env[`${queue.id.toUpperCase().replace(/-/g, "_")}_QUEUE_URL`]!;
