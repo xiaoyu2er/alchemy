@@ -4,6 +4,8 @@ import path from "pathe";
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import type { Secret } from "../secret.ts";
+import { diff } from "../util/diff.ts";
+import { hashFilePatterns } from "../util/hash-file-patterns.ts";
 import { DockerApi } from "./api.ts";
 
 /**
@@ -79,6 +81,21 @@ export interface ImageProps {
    * Whether to skip pushing the image to registry
    */
   skipPush?: boolean;
+
+  /**
+   * Whether to memoize the build.
+   *
+   * When set to `true`, the image will only be rebuilt if the properties change.
+   *
+   * When set to an object with `patterns`, the image will be rebuilt if either:
+   * 1. The properties change, or
+   * 2. The contents of any files matching the glob patterns change
+   *
+   * @note When memoizing the build, changes to the registry password will not trigger a rebuild. This is because some registries use ephemeral credentials.
+   *
+   * @default false
+   */
+  memoize?: boolean | { patterns: string[] };
 }
 
 /**
@@ -109,6 +126,11 @@ export interface Image extends ImageProps {
    * Time when the image was built
    */
   builtAt: number;
+
+  /**
+   * Hash of the image inputs, if memoize is enabled
+   */
+  hash?: string;
 }
 
 /**
@@ -131,7 +153,7 @@ export interface Image extends ImageProps {
 export const Image = Resource(
   "docker::Image",
   async function (
-    this: Context<Image>,
+    this: Context<Image, ImageProps>,
     id: string,
     props: ImageProps,
   ): Promise<Image> {
@@ -165,6 +187,23 @@ export const Image = Resource(
       }
       await fs.access(context);
       await fs.access(dockerfile);
+
+      const hash =
+        typeof props.memoize === "object"
+          ? await hashFilePatterns(context, props.memoize.patterns)
+          : undefined;
+
+      if (this.phase === "update" && props.memoize) {
+        if (
+          // have any properties changed other than the registry credentials?
+          !diff(this.props, props).some((change) => change !== "registry") ||
+          this.props.registry?.server !== props.registry?.server ||
+          // have the memoized inputs changed?
+          (typeof props.memoize === "object" && hash !== this.output?.hash)
+        ) {
+          return this.output;
+        }
+      }
 
       // Prepare build options
       const buildOptions: Record<string, string> = props.build?.args || {};
@@ -273,6 +312,7 @@ export const Image = Resource(
         imageId,
         repoDigest,
         builtAt: Date.now(),
+        hash,
       };
     }
   },

@@ -195,10 +195,6 @@ export async function Container<T>(
 ): Promise<Container<T>> {
   const scope = Scope.current;
   const name = props.name ?? scope.createPhysicalName(id);
-  const tag =
-    props.tag === undefined || props.tag === "latest"
-      ? `latest-${Date.now()}`
-      : props.tag;
 
   const output: Omit<Container<T>, "image"> = {
     type: "container",
@@ -219,8 +215,9 @@ export async function Container<T>(
   if (isDev) {
     const image = await Image(id, {
       name: `cloudflare-dev/${name}`, // prefix used by Miniflare
-      tag,
+      tag: props.tag,
       build: props.build,
+      memoize: props.memoize,
     });
 
     return {
@@ -234,7 +231,7 @@ export async function Container<T>(
 
   const image = await Image(id, {
     name: `${api.accountId}/${name}`,
-    tag,
+    tag: props.tag,
     build: {
       platform: props.build?.platform ?? "linux/amd64",
       ...props.build,
@@ -244,6 +241,7 @@ export async function Container<T>(
       username: credentials.username || credentials.user!,
       password: secret(credentials.password),
     },
+    memoize: props.memoize,
   });
 
   return {
