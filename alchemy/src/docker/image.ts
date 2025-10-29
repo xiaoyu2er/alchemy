@@ -1,13 +1,15 @@
-import crypto from "node:crypto";
+import { exec } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
+import { promisify } from "node:util";
 import path from "pathe";
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import type { Secret } from "../secret.ts";
 import { diff } from "../util/diff.ts";
-import { exists } from "../util/exists.ts";
 import { DockerApi } from "./api.ts";
+
+const execAsync = promisify(exec);
 
 /**
  * Options for building a Docker image
@@ -158,7 +160,7 @@ export const Image = Resource(
       return this.destroy();
     } else {
       // Normalize properties
-      const tag = props.tag || "latest";
+      let tag = props.tag || "latest";
       const name = props.name || id;
       const imageRef = `${name}:${tag}`;
 
@@ -180,17 +182,22 @@ export const Image = Resource(
       await fs.access(context);
       await fs.access(dockerfile);
 
-      const hash = await hashDockerContext(context);
+      const hash =
+        props.cache !== false ? await hashDockerContext(context) : undefined;
 
-      if (this.phase === "update" && props.cache !== false) {
+      if (hash) {
         if (
+          this.phase === "update" &&
           // have any properties changed other than the registry credentials?
-          !diff(this.props, props).some((change) => change !== "registry") ||
-          this.props.registry?.server !== props.registry?.server ||
-          // have the files changed?
-          hash !== this.output?.hash
+          (!diff(this.props, props).some((change) => change !== "registry") ||
+            this.props.registry?.server !== props.registry?.server ||
+            // have the files changed?
+            hash !== this.output?.hash)
         ) {
           return this.output;
+        }
+        if (tag === "latest") {
+          tag = `latest-${hash}`;
         }
       }
 
@@ -308,43 +315,11 @@ export const Image = Resource(
 );
 
 async function hashDockerContext(context: string) {
-  const { glob } = await import("glob");
-
-  const ignore: string[] = [];
-  const dockerIgnorePath = path.join(context, ".dockerignore");
-  if (await exists(dockerIgnorePath)) {
-    const dockerIgnoreContent = await fs.readFile(dockerIgnorePath, "utf8");
-    ignore.push(
-      ...dockerIgnoreContent
-        .split("\n")
-        .filter((line) => line.trim() && !line.startsWith("#")),
-    );
-  }
-
-  const files = await glob("**/*", {
-    cwd: context,
-    ignore,
-    nodir: true,
-    dot: true,
-  });
-
-  const hashes = new Map<string, string>();
-  await Promise.all(
-    files.map(async (file) => {
-      const content = await fs.readFile(path.join(context, file));
-      hashes.set(
-        file,
-        crypto.createHash("sha256").update(content).digest("hex"),
-      );
-    }),
-  );
-
-  const finalHash = crypto.createHash("sha256");
-  for (const file of files.sort()) {
-    const hash = hashes.get(file);
-    if (hash) {
-      finalHash.update(hash);
-    }
-  }
-  return finalHash.digest("hex");
+  const command = `if [ -f .dockerignore ]; then
+    tar --exclude-from=.dockerignore -cf - . | sha256sum
+else
+    tar -cf - . | sha256sum
+fi`;
+  const { stdout } = await execAsync(command, { cwd: context });
+  return stdout.split("-")[0].trim();
 }
