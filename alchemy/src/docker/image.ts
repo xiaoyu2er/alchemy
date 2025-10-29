@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "pathe";
@@ -5,7 +6,7 @@ import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import type { Secret } from "../secret.ts";
 import { diff } from "../util/diff.ts";
-import { hashFilePatterns } from "../util/hash-file-patterns.ts";
+import { exists } from "../util/exists.ts";
 import { DockerApi } from "./api.ts";
 
 /**
@@ -83,19 +84,10 @@ export interface ImageProps {
   skipPush?: boolean;
 
   /**
-   * Whether to memoize the build.
-   *
-   * When set to `true`, the image will only be rebuilt if the properties change.
-   *
-   * When set to an object with `patterns`, the image will be rebuilt if either:
-   * 1. The properties change, or
-   * 2. The contents of any files matching the glob patterns change
-   *
-   * @note When memoizing the build, changes to the registry password will not trigger a rebuild. This is because some registries use ephemeral credentials.
-   *
-   * @default false
+   * Whether to cache the build context.
+   * @default true
    */
-  memoize?: boolean | { patterns: string[] };
+  cache?: boolean;
 }
 
 /**
@@ -188,18 +180,15 @@ export const Image = Resource(
       await fs.access(context);
       await fs.access(dockerfile);
 
-      const hash =
-        typeof props.memoize === "object"
-          ? await hashFilePatterns(context, props.memoize.patterns)
-          : undefined;
+      const hash = await hashDockerContext(context);
 
-      if (this.phase === "update" && props.memoize) {
+      if (this.phase === "update" && props.cache !== false) {
         if (
           // have any properties changed other than the registry credentials?
           !diff(this.props, props).some((change) => change !== "registry") ||
           this.props.registry?.server !== props.registry?.server ||
-          // have the memoized inputs changed?
-          (typeof props.memoize === "object" && hash !== this.output?.hash)
+          // have the files changed?
+          hash !== this.output?.hash
         ) {
           return this.output;
         }
@@ -317,3 +306,45 @@ export const Image = Resource(
     }
   },
 );
+
+async function hashDockerContext(context: string) {
+  const { glob } = await import("glob");
+
+  const ignore: string[] = [];
+  const dockerIgnorePath = path.join(context, ".dockerignore");
+  if (await exists(dockerIgnorePath)) {
+    const dockerIgnoreContent = await fs.readFile(dockerIgnorePath, "utf8");
+    ignore.push(
+      ...dockerIgnoreContent
+        .split("\n")
+        .filter((line) => line.trim() && !line.startsWith("#")),
+    );
+  }
+
+  const files = await glob("**/*", {
+    cwd: context,
+    ignore,
+    nodir: true,
+    dot: true,
+  });
+
+  const hashes = new Map<string, string>();
+  await Promise.all(
+    files.map(async (file) => {
+      const content = await fs.readFile(path.join(context, file));
+      hashes.set(
+        file,
+        crypto.createHash("sha256").update(content).digest("hex"),
+      );
+    }),
+  );
+
+  const finalHash = crypto.createHash("sha256");
+  for (const file of files.sort()) {
+    const hash = hashes.get(file);
+    if (hash) {
+      finalHash.update(hash);
+    }
+  }
+  return finalHash.digest("hex");
+}

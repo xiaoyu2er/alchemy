@@ -217,7 +217,7 @@ export async function Container<T>(
       name: `cloudflare-dev/${name}`, // prefix used by Miniflare
       tag: props.tag,
       build: props.build,
-      memoize: props.memoize,
+      cache: props.cache,
     });
 
     return {
@@ -241,7 +241,7 @@ export async function Container<T>(
       username: credentials.username || credentials.user!,
       password: secret(credentials.password),
     },
-    memoize: props.memoize,
+    cache: props.cache,
   });
 
   return {

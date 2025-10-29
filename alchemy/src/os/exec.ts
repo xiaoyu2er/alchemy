@@ -1,8 +1,9 @@
 import { spawn, type SpawnOptions } from "node:child_process";
+import { createHash } from "node:crypto";
+import { join } from "pathe";
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import type { Secret } from "../secret.ts";
-import { hashFilePatterns } from "../util/hash-file-patterns.ts";
 
 /**
  * Properties for executing a shell command
@@ -185,10 +186,7 @@ export const Exec = Resource(
 
     const hash =
       typeof props.memoize === "object"
-        ? await hashFilePatterns(
-            props.cwd ?? process.cwd(),
-            props.memoize.patterns,
-          )
+        ? await hashInputs(props.cwd ?? process.cwd(), props.memoize.patterns)
         : undefined;
 
     if (
@@ -370,4 +368,34 @@ export async function exec(
       reject(err);
     });
   });
+}
+
+async function hashInputs(cwd: string, patterns: string[]) {
+  const { glob } = await import("glob");
+  const { readFile } = await import("node:fs/promises");
+
+  const hashes = new Map<string, string>();
+
+  await Promise.all(
+    patterns.flatMap(async (pattern) => {
+      const files = await glob(pattern, { cwd });
+      return Promise.all(
+        files.map(async (file: string) => {
+          const path = join(cwd, file);
+          const content = await readFile(path);
+          hashes.set(path, createHash("sha256").update(content).digest("hex"));
+        }),
+      );
+    }),
+  );
+
+  const sortedHashes = Array.from(hashes.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+
+  const finalHash = createHash("sha256");
+  for (const [, hash] of sortedHashes) {
+    finalHash.update(hash);
+  }
+  return finalHash.digest("hex");
 }
