@@ -11,13 +11,16 @@ import {
   type PendingResource,
   type Provider,
   type Resource,
+  type ResourceAttributes,
   type ResourceProps,
 } from "./resource.ts";
 import type { PendingDeletions } from "./scope.ts";
 import { serialize } from "./serde.ts";
+import type { State } from "./state.ts";
 import { formatFQN } from "./util/cli.ts";
 import { logger } from "./util/logger.ts";
-import type { Telemetry } from "./util/telemetry/index.ts";
+import { createAndSendEvent } from "./util/telemetry.ts";
+import { validateResourceID } from "./util/validate-resource-id.ts";
 
 export interface ApplyOptions {
   quiet?: boolean;
@@ -25,11 +28,11 @@ export interface ApplyOptions {
   noop?: boolean;
 }
 
-export function apply<Out extends Resource>(
+export function apply<Out extends ResourceAttributes>(
   resource: PendingResource<Out>,
   props: ResourceProps | undefined,
   options?: ApplyOptions,
-): Promise<Awaited<Out>> {
+): Promise<Awaited<Out> & Resource> {
   return _apply(resource, props, options);
 }
 
@@ -47,13 +50,14 @@ export class ReplacedSignal extends Error {
   }
 }
 
-async function _apply<Out extends Resource>(
+async function _apply<Out extends ResourceAttributes>(
   resource: PendingResource<Out>,
   props: ResourceProps | undefined,
   options?: ApplyOptions,
-): Promise<Awaited<Out>> {
+): Promise<Awaited<Out> & Resource> {
   const scope = resource[ResourceScope];
   const start = performance.now();
+  validateResourceID(resource[ResourceID], "Resource");
   try {
     const quiet = props?.quiet ?? scope.quiet;
     await scope.init();
@@ -64,16 +68,86 @@ async function _apply<Out extends Resource>(
     }
     if (scope.phase === "read") {
       if (state === undefined) {
-        throw new Error(
-          `Resource "${resource[ResourceFQN]}" not found and running in 'read' phase.`,
-        );
+        if (scope.isSelected === false) {
+          // we are running in a monorepo and are not the selected app
+          if (process.argv.includes("--destroy")) {
+            // if we are trying to destroy a downstream app and this (upstream) app does not have data, then exit
+            process.exit(0);
+          }
+          // if we are in `--deploy`, then poll until state available
+          state = await waitForConsistentState();
+        } else {
+          throw new Error(
+            `Resource "${resource[ResourceFQN]}" not found and running in 'read' phase. Selected(${scope.isSelected})`,
+          );
+        }
+      } else if (scope.isSelected === false) {
+        // we are running in a monorepo and are not the selected app, so we need to wait for the process to be consistent
+        state = await waitForConsistentState();
       }
-      scope.telemetryClient.record({
+      await createAndSendEvent({
         event: "resource.read",
+        phase: scope.phase,
+        duration: performance.now() - start,
+        status: state.status,
         resource: resource[ResourceKind],
+        replaced: false,
       });
-      return state.output as Awaited<Out>;
+      return state.output as Awaited<Out> & Resource;
+
+      // -> poll until it does not (i.e. when the owner process applies the change and updates the state store)
+      async function waitForConsistentState() {
+        let startTime = Date.now();
+        while (true) {
+          if (state === undefined) {
+            // state doesn't exist yet
+          } else if (
+            state.status === "creating" ||
+            state.status === "updating"
+          ) {
+            // no-op
+          } else if (
+            state.status === "deleted" ||
+            state.status === "deleting"
+          ) {
+            // ok something is wrong, the stack should not be being deleted
+            // TODO(sam): better error message
+            throw new Error("Resource is being deleted");
+          } else if (await inputsAreEqual(state)) {
+            // sweet, we've reached a stable state and read can progress
+            return state;
+          } else {
+            const elapsed = Date.now() - startTime;
+            if (
+              // looks stable but the props are different on our side, it's likely that the input props are not deterministic
+              (state.status === "created" || state.status === "updated") &&
+              elapsed > 1_000
+            ) {
+              logger.warn(
+                `Resource '${resource[ResourceFQN]}' is not in a stable state after ${elapsed}ms, be sure to check if your input props are deterministic:`,
+                state.props,
+              );
+            }
+          }
+          // jitter between 100-300ms
+          const jitter = 100 + Math.random() * 200;
+          await new Promise((resolve) => setTimeout(resolve, jitter));
+          state = await scope.state.get(resource[ResourceID]);
+        }
+      }
+      async function inputsAreEqual(
+        state: State<string, ResourceProps | undefined, Resource>,
+      ) {
+        const oldProps = await serialize(scope, state.props, {
+          encrypt: false,
+        });
+        const newProps = await serialize(scope, props, {
+          encrypt: false,
+        });
+        return JSON.stringify(oldProps) === JSON.stringify(newProps);
+      }
     }
+
     if (state === undefined) {
       state = {
         kind: resource[ResourceKind],
@@ -96,6 +170,7 @@ async function _apply<Out extends Resource>(
       };
       await scope.state.set(resource[ResourceID], state);
     }
+
     const oldOutput = state.output;
 
     const alwaysUpdate =
@@ -123,12 +198,15 @@ async function _apply<Out extends Resource>(
             status: "success",
           });
         }
-        scope.telemetryClient.record({
+        createAndSendEvent({
           event: "resource.skip",
           resource: resource[ResourceKind],
           status: state.status,
+          phase: scope.phase,
+          duration: performance.now() - start,
+          replaced: false,
         });
-        return state.output as Awaited<Out>;
+        return state.output as Awaited<Out> & Resource;
       }
     }
 
@@ -146,10 +224,13 @@ async function _apply<Out extends Resource>(
       });
     }
 
-    scope.telemetryClient.record({
+    createAndSendEvent({
       event: "resource.start",
       resource: resource[ResourceKind],
       status: state.status,
+      phase: scope.phase,
+      duration: performance.now() - start,
+      replaced: false,
     });
 
     await scope.state.set(resource[ResourceID], state);
@@ -183,7 +264,7 @@ async function _apply<Out extends Resource>(
       },
     });
 
-    let output: Resource<string>;
+    let output: any;
     try {
       output = await alchemy.run(
         resource[ResourceID],
@@ -194,7 +275,7 @@ async function _apply<Out extends Resource>(
           noop: options?.noop,
         },
         async () =>
-          await provider.handler.bind(ctx)(resource[ResourceID], props),
+          ctx(await provider.handler.bind(ctx)(resource[ResourceID], props)),
       );
     } catch (error) {
       if (error instanceof ReplacedSignal) {
@@ -232,25 +313,27 @@ async function _apply<Out extends Resource>(
             parent: scope,
             noop: options?.noop,
           },
-          async () =>
-            provider.handler.bind(
-              context({
-                scope,
-                phase: "create",
-                kind: resource[ResourceKind],
-                id: resource[ResourceID],
-                fqn: resource[ResourceFQN],
-                seq: resource[ResourceSeq],
-                props: state!.props,
-                state: state!,
-                isReplacement: true,
-                replace: () => {
-                  throw new Error(
-                    `Resource ${resource[ResourceKind]} ${resource[ResourceFQN]} cannot be replaced in create phase.`,
-                  );
-                },
-              }),
-            )(resource[ResourceID], props),
+          async () => {
+            const ctx = context({
+              scope,
+              phase: "create",
+              kind: resource[ResourceKind],
+              id: resource[ResourceID],
+              fqn: resource[ResourceFQN],
+              seq: resource[ResourceSeq],
+              props: state!.props,
+              state: state!,
+              isReplacement: true,
+              replace: () => {
+                throw new Error(
+                  `Resource ${resource[ResourceKind]} ${resource[ResourceFQN]} cannot be replaced in create phase.`,
+                );
+              },
+            });
+            return ctx(
+              await provider.handler.bind(ctx)(resource[ResourceID], props),
+            );
+          },
         );
       } else {
         throw error;
@@ -262,17 +345,20 @@ async function _apply<Out extends Resource>(
           phase === "create" ? "created" : isReplaced ? "replaced" : "updated",
         prefixColor: "greenBright",
         resource: formatFQN(resource[ResourceFQN]),
-        message: `${phase === "create" ? "Created" : isReplaced ? "Replaced" : "Updated"} Resource`,
+        message: `${
+          phase === "create" ? "Created" : isReplaced ? "Replaced" : "Updated"
+        } Resource`,
         status: "success",
       });
     }
 
     const status = phase === "create" ? "created" : "updated";
-    scope.telemetryClient.record({
+    createAndSendEvent({
       event: "resource.success",
       resource: resource[ResourceKind],
       status,
-      elapsed: performance.now() - start,
+      phase: scope.phase,
+      duration: performance.now() - start,
       replaced: isReplaced,
     });
 
@@ -287,14 +373,20 @@ async function _apply<Out extends Resource>(
       output,
       props,
     });
-    return output as any;
+    return output as Awaited<Out> & Resource;
   } catch (error) {
-    scope.telemetryClient.record({
-      event: "resource.error",
-      resource: resource[ResourceKind],
-      error: error as Telemetry.ErrorInput,
-      elapsed: performance.now() - start,
-    });
+    let errorToSend = error instanceof Error ? error : new Error(String(error));
+    createAndSendEvent(
+      {
+        event: "resource.error",
+        resource: resource[ResourceKind],
+        duration: performance.now() - start,
+        phase: scope.phase,
+        status: "unknown",
+        replaced: false,
+      },
+      errorToSend,
+    );
     scope.fail();
     throw error;
   }

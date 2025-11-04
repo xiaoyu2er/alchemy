@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "pathe";
 import { fileURLToPath } from "node:url";
 import { getPackageVersion } from "./services/get-package-version.ts";
 
@@ -10,7 +10,7 @@ export const dependencyVersionMap = {
   alchemy:
     process.env.NODE_ENV === "test"
       ? `file:${path.resolve(PKG_ROOT)}`
-      : getPackageVersion(),
+      : await getPackageVersion(),
 
   miniflare: "^4.20250617.3",
 
@@ -23,6 +23,10 @@ export const dependencyVersionMap = {
 
   // nuxt
   "nitro-cloudflare-dev": "^0.2.2",
+
+  // nextjs
+  "@opennextjs/cloudflare": "^1.6.5",
+  sharp: "^0.34.3",
 
   // react-router
   "@cloudflare/vite-plugin": "^1.0.12",

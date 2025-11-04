@@ -37,8 +37,7 @@ interface WorkerSubdomainProps extends CloudflareApiOptions {
   dev?: boolean;
 }
 
-export interface WorkerSubdomain
-  extends Resource<"cloudflare::WorkerSubdomain"> {
+export interface WorkerSubdomain {
   /**
    * The `workers.dev` URL for the worker or preview version.
    */
@@ -49,13 +48,13 @@ export const WorkerSubdomain = Resource(
   "cloudflare::WorkerSubdomain",
   async function (
     this: Context<WorkerSubdomain>,
-    id: string,
+    _id: string,
     props: WorkerSubdomainProps,
   ) {
     if (this.scope.local && props.dev) {
-      return this({
+      return {
         url: this.output?.url ?? "https://unavailable.alchemy.run",
-      });
+      };
     }
 
     const api = await createCloudflareApi(props);
@@ -74,9 +73,9 @@ export const WorkerSubdomain = Resource(
     } else {
       url = `https://${props.scriptName}.${base}`;
     }
-    return this(id, {
+    return {
       url,
-    });
+    };
   },
 );
 
@@ -112,7 +111,7 @@ export async function enableWorkerSubdomain(
         ),
       ),
     (error) => error instanceof CloudflareApiError && error.status === 404,
-    10,
+    20,
     1000,
   );
 }
@@ -127,7 +126,6 @@ export async function getWorkerSubdomain(
       `/accounts/${api.accountId}/workers/scripts/${scriptName}/subdomain`,
     ),
   ).catch((error): SubdomainResponse => {
-    console.log("error", error);
     if (error.status === 404) {
       return { enabled: false, previews_enabled: false };
     }

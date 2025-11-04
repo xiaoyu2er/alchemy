@@ -1,13 +1,15 @@
 import { log } from "@clack/prompts";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { resolve } from "node:path";
+import { resolve } from "pathe";
 import pc from "picocolors";
 import z from "zod";
 import { detectRuntime } from "../../src/util/detect-node-runtime.ts";
 import { detectPackageManager } from "../../src/util/detect-package-manager.ts";
 import { exists } from "../../src/util/exists.ts";
+import { findWorkspaceRoot } from "../../src/util/find-workspace-root.ts";
 import { promiseWithResolvers } from "../../src/util/promise-with-resolvers.ts";
+import { collectData } from "../../src/util/telemetry.ts";
 import { ExitSignal } from "../trpc.ts";
 import { CDPProxy } from "./cdp-manager/cdp-proxy.ts";
 import { CDPManager } from "./cdp-manager/server.ts";
@@ -62,11 +64,19 @@ export const execArgs = {
     .boolean()
     .optional()
     .describe("Enable inspector and wait for connection"),
-  envFile: z
+  envFile: z.string().optional().describe("Path to environment file to load"),
+  app: z
     .string()
     .optional()
-    .default(".env")
-    .describe("Path to environment file to load"),
+    .describe("Select a specific application to target"),
+  rootDir: z
+    .string()
+    .optional()
+    .describe("Path to the root directory of the project"),
+  profile: z
+    .string()
+    .optional()
+    .describe("Alchemy profile to use for authorizing requests"),
 } as const;
 
 export async function execAlchemy(
@@ -85,6 +95,9 @@ export async function execAlchemy(
     inspectBrk,
     inspectWait,
     adopt,
+    app,
+    rootDir,
+    profile,
   }: {
     cwd?: string;
     quiet?: boolean;
@@ -99,12 +112,24 @@ export async function execAlchemy(
     inspect?: boolean;
     inspectBrk?: boolean;
     inspectWait?: boolean;
+    app?: string;
+    rootDir?: string;
+    profile?: string;
   },
 ) {
   const args: string[] = [];
   const execArgs: string[] = [];
 
   const shouldInspect = (inspect || inspectBrk || inspectWait) ?? false;
+
+  const telemetryData = await collectData();
+
+  args.push(`--telemetry-session-id ${telemetryData.sessionId}`);
+  args.push(
+    `--telemetry-ref ${
+      telemetryData.referrer ? `${telemetryData.referrer}+cli` : "cli"
+    }`,
+  );
 
   if (quiet) args.push("--quiet");
   if (read) args.push("--read");
@@ -115,18 +140,54 @@ export async function execAlchemy(
     execArgs.push("--watch");
     args.push("--watch");
   }
-  if (envFile && (await exists(envFile))) {
+  if (envFile) {
+    if (!(await exists(envFile))) {
+      log.error(pc.red(`Environment file ${envFile} does not exist.`));
+      throw new ExitSignal(1);
+    }
     execArgs.push(`--env-file ${envFile}`);
+  } else {
+    const envFile = resolve(cwd, ".env");
+    if (await exists(envFile)) {
+      execArgs.push(`--env-file ${envFile}`);
+    }
   }
   if (dev) args.push("--dev");
   if (inspect) execArgs.push("--inspect");
   if (inspectWait) execArgs.push("--inspect-wait");
   if (inspectBrk) execArgs.push("--inspect-brk");
   if (adopt) args.push("--adopt");
+  if (profile) args.push(`--profile ${profile}`);
+  if (app) args.push(`--app ${app}`);
+  if (rootDir) {
+    args.push(`--root-dir ${rootDir}`);
+  } else if (app) {
+    try {
+      const rootDir = await findWorkspaceRoot(cwd);
+      console.log("found root dir:", rootDir);
+      // no root directory was provided but a specific app was provided, so we need to find the monorepo root
+      args.push(`--root-dir ${rootDir}`);
+      if (!envFile) {
+        // move the default --env-file to the root of the monorepo
+        const rootEnv = resolve(rootDir, ".env");
+        if (await exists(rootEnv)) {
+          execArgs.push(`--env-file ${rootEnv}`);
+        }
+      }
+    } catch (error) {
+      console.error("error finding monorepo root", error);
+      throw error;
+    }
+  }
 
   // Check for alchemy.run.ts or alchemy.run.js (if not provided)
   if (!main) {
-    const candidates = ["alchemy.run.ts", "alchemy.run.js"];
+    const candidates = [
+      "alchemy.run.ts",
+      "alchemy.run.js",
+      "alchemy.run.mts",
+      "alchemy.run.mjs",
+    ];
     for (const file of candidates) {
       const resolved = resolve(cwd, file);
       if (await exists(resolved)) {
@@ -161,7 +222,7 @@ export async function execAlchemy(
   const execArgsString = execArgs.join(" ");
   // Determine the command to run based on package manager and file extension
   let command: string;
-  const isTypeScript = main.endsWith(".ts");
+  const isTypeScript = main.endsWith("ts");
 
   switch (packageManager) {
     case "bun":
@@ -202,8 +263,9 @@ export async function execAlchemy(
     promiseWithResolvers<string>();
 
   process.on("SIGINT", async () => {
+    // hold the parent process open until the child process exits,
+    // then the trpc middleware will handle the SIGINT after sending the event
     await exitPromise;
-    process.exit(sanitizeExitCode(child.exitCode));
   });
 
   const child = spawn(command, {
@@ -244,14 +306,16 @@ export async function execAlchemy(
     if (childRuntime === "bun") {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    const cdpManager = new CDPManager();
+    await cdpManager.startServer();
     const rootCDPProxy = new CDPProxy(inspectorUrl, {
       name: "alchemy.run.ts",
       server: cdpManager.server,
       connect: inspectWait || inspectBrk,
       // domains:
       //   childRuntime === "bun"
-      //     ? ["Inspector", "Console", "Runtime", "Debugger", "Heap"]
-      //     : ["Runtime", "Debugger", "Profiler", "Log"],
+      //     ? new Set(["Inspector", "Console", "Runtime", "Debugger", "Heap"])
+      //     : new Set(["Runtime", "Debugger", "Profiler", "Log"]),
     });
     await cdpManager.registerCDPServer(rootCDPProxy);
     if (inspectWait || inspectBrk) {
@@ -261,7 +325,8 @@ export async function execAlchemy(
 
   const exitPromise = once(child, "exit");
   await exitPromise.catch(() => {});
-  process.exit(sanitizeExitCode(child.exitCode));
+
+  throw new ExitSignal(sanitizeExitCode(child.exitCode));
 }
 
 /**

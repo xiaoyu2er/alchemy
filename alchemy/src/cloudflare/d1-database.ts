@@ -117,48 +117,47 @@ export interface D1DatabaseProps extends CloudflareApiOptions {
   };
 }
 
-export function isD1Database(resource: Resource): resource is D1Database {
-  return resource[ResourceKind] === "cloudflare::D1Database";
+export function isD1Database(resource: any): resource is D1Database {
+  return resource?.[ResourceKind] === "cloudflare::D1Database";
 }
 
 /**
  * Output returned after D1 Database creation/update
  */
-export type D1Database = Resource<"cloudflare::D1Database"> &
-  Pick<
-    D1DatabaseProps,
-    | "migrationsDir"
-    | "migrationsTable"
-    | "primaryLocationHint"
-    | "readReplication"
-  > & {
-    type: "d1";
+export type D1Database = Pick<
+  D1DatabaseProps,
+  | "migrationsDir"
+  | "migrationsTable"
+  | "primaryLocationHint"
+  | "readReplication"
+> & {
+  type: "d1";
+  /**
+   * The unique ID of the database (UUID)
+   */
+  id: string;
+
+  /**
+   * The name of the database
+   */
+  name: string;
+
+  /**
+   * Development mode properties
+   * @internal
+   */
+  dev: {
     /**
-     * The unique ID of the database (UUID)
+     * The ID of the database in development mode
      */
     id: string;
 
     /**
-     * The name of the database
+     * Whether the database is running remotely
      */
-    name: string;
-
-    /**
-     * Development mode properties
-     * @internal
-     */
-    dev: {
-      /**
-       * The ID of the database in development mode
-       */
-      id: string;
-
-      /**
-       * Whether the database is running remotely
-       */
-      remote: boolean;
-    };
+    remote: boolean;
   };
+};
 
 /**
  * Creates and manages Cloudflare D1 Databases.
@@ -283,9 +282,10 @@ const _D1Database = Resource(
           databaseId: dev.id,
           migrationsTable: props.migrationsTable ?? DEFAULT_MIGRATIONS_TABLE,
           migrations: props.migrationsFiles,
+          rootDir: this.scope.rootDir,
         });
       }
-      return this({
+      return {
         type: "d1",
         id: this.output?.id ?? "",
         name: databaseName,
@@ -294,14 +294,14 @@ const _D1Database = Resource(
         migrationsDir: props.migrationsDir,
         migrationsTable: props.migrationsTable ?? DEFAULT_MIGRATIONS_TABLE,
         dev,
-      });
+      };
     }
 
     const api = await createCloudflareApi(props);
 
     if (this.phase === "delete") {
       if (this.output.dev?.id) {
-        await deleteMiniflareBinding("d1", this.output.dev.id);
+        await deleteMiniflareBinding(this.scope, "d1", this.output.dev.id);
       }
       if (props.delete !== false && this.output?.id) {
         await deleteDatabase(api, this.output.id);
@@ -318,7 +318,6 @@ const _D1Database = Resource(
       // after that, the ID will remain the UUID for the lifetime of the database
       !this.output?.id
     ) {
-      logger.log("Creating D1 database:", databaseName);
       try {
         dbData = await createDatabase(api, databaseName, props);
 
@@ -354,9 +353,6 @@ const _D1Database = Resource(
 
           // Update the database with the provided properties
           if (props.readReplication) {
-            logger.log(
-              `Updating adopted database ${databaseName} with new properties`,
-            );
             dbData = await updateDatabase(api, existingDb.id, props);
           }
         } else {
@@ -374,15 +370,10 @@ const _D1Database = Resource(
           `Cannot update primaryLocationHint from '${this.output.primaryLocationHint}' to '${props.primaryLocationHint}' after database creation.`,
         );
       }
-      logger.log("Updating D1 database:", databaseName);
       // Update the database with new properties
       dbData = await updateDatabase(api, this.output.id, props);
     } else {
       // If no ID exists, fall back to creating a new database
-      logger.log(
-        "No existing database ID found, creating new D1 database:",
-        databaseName,
-      );
       dbData = await createDatabase(api, databaseName, props);
     }
 
@@ -413,7 +404,7 @@ const _D1Database = Resource(
       // TODO(sam): why would this ever happen?
       throw new Error("Database ID not found");
     }
-    return this({
+    return {
       type: "d1",
       id: dbData.result.uuid!,
       name: databaseName,
@@ -422,7 +413,7 @@ const _D1Database = Resource(
       dev,
       migrationsDir: props.migrationsDir,
       migrationsTable: props.migrationsTable ?? DEFAULT_MIGRATIONS_TABLE,
-    });
+    };
   },
 );
 

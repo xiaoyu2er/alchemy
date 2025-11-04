@@ -13,6 +13,8 @@ import {
   type CloudflareApiOptions,
 } from "./api.ts";
 import { deleteMiniflareBinding } from "./miniflare/delete.ts";
+import * as mf from "miniflare";
+import { getDefaultPersistPath } from "./miniflare/paths.ts";
 
 /**
  * Properties for creating or updating a KV Namespace
@@ -95,47 +97,46 @@ export interface KVPair {
   metadata?: any;
 }
 
-export function isKVNamespace(resource: Resource): resource is KVNamespace {
-  return resource[ResourceKind] === "cloudflare::KVNamespace";
+export function isKVNamespace(resource: any): resource is KVNamespace {
+  return resource?.[ResourceKind] === "cloudflare::KVNamespace";
 }
 
 /**
  * Output returned after KV Namespace creation/update
  */
-export type KVNamespace = Resource<"cloudflare::KVNamespace"> &
-  Omit<KVNamespaceProps, "delete" | "dev"> & {
-    type: "kv_namespace";
+export type KVNamespace = Omit<KVNamespaceProps, "delete" | "dev"> & {
+  type: "kv_namespace";
+  /**
+   * The ID of the namespace
+   */
+  namespaceId: string;
+
+  /**
+   * Time at which the namespace was created
+   */
+  createdAt: number;
+
+  /**
+   * Time at which the namespace was last modified
+   */
+  modifiedAt: number;
+
+  /**
+   * Development mode properties
+   * @internal
+   */
+  dev: {
     /**
-     * The ID of the namespace
+     * The ID of the KV namespace in development mode
      */
-    namespaceId: string;
+    id: string;
 
     /**
-     * Time at which the namespace was created
+     * Whether the KV namespace is running remotely
      */
-    createdAt: number;
-
-    /**
-     * Time at which the namespace was last modified
-     */
-    modifiedAt: number;
-
-    /**
-     * Development mode properties
-     * @internal
-     */
-    dev: {
-      /**
-       * The ID of the KV namespace in development mode
-       */
-      id: string;
-
-      /**
-       * Whether the KV namespace is running remotely
-       */
-      remote: boolean;
-    };
+    remote: boolean;
   };
+};
 
 /**
  * A Cloudflare KV Namespace is a key-value store that can be used to store data for your application.
@@ -221,7 +222,14 @@ const _KVNamespace = Resource(
     };
 
     if (local) {
-      return this({
+      if (props.values) {
+        await insertLocalKVRecords({
+          namespaceId: dev.id,
+          values: props.values,
+          rootDir: this.scope.rootDir,
+        });
+      }
+      return {
         type: "kv_namespace",
         namespaceId: this.output?.namespaceId ?? "",
         title,
@@ -229,7 +237,7 @@ const _KVNamespace = Resource(
         dev,
         createdAt: this.output?.createdAt ?? Date.now(),
         modifiedAt: Date.now(),
-      });
+      };
     }
 
     const api = await createCloudflareApi(props);
@@ -240,7 +248,7 @@ const _KVNamespace = Resource(
 
     if (this.phase === "delete") {
       if (this.output.dev?.id) {
-        await deleteMiniflareBinding("kv", this.output.dev.id);
+        await deleteMiniflareBinding(this.scope, "kv", this.output.dev.id);
       }
       if (this.output.namespaceId && props.delete !== false) {
         await deleteKVNamespace(api, this.output.namespaceId);
@@ -260,7 +268,7 @@ const _KVNamespace = Resource(
 
     await insertKVRecords(api, result.namespaceId, props);
 
-    return this({
+    return {
       type: "kv_namespace",
       namespaceId: result.namespaceId,
       title,
@@ -268,7 +276,7 @@ const _KVNamespace = Resource(
       dev,
       createdAt: result.createdAt,
       modifiedAt: Date.now(),
-    });
+    };
   },
 );
 
@@ -341,31 +349,18 @@ export async function insertKVRecords(
     const BATCH_SIZE = 10000;
 
     for (let i = 0; i < props.values.length; i += BATCH_SIZE) {
-      const batch = props.values.slice(i, i + BATCH_SIZE);
-
-      const bulkPayload = batch.map((entry) => {
-        const item: any = {
+      const bulkPayload = props.values
+        .slice(i, i + BATCH_SIZE)
+        .map((entry) => ({
           key: entry.key,
           value:
             typeof entry.value === "string"
               ? entry.value
               : JSON.stringify(entry.value),
-        };
-
-        if (entry.expiration) {
-          item.expiration = entry.expiration;
-        }
-
-        if (entry.expirationTtl) {
-          item.expiration_ttl = entry.expirationTtl;
-        }
-
-        if (entry.metadata) {
-          item.metadata = entry.metadata;
-        }
-
-        return item;
-      });
+          expiration: entry.expiration,
+          expiration_ttl: entry.expirationTtl,
+          metadata: entry.metadata,
+        }));
 
       await withExponentialBackoff(
         async () => {
@@ -395,6 +390,42 @@ export async function insertKVRecords(
         1000, // Start with 1 second delay
       );
     }
+  }
+}
+
+export async function insertLocalKVRecords(input: {
+  namespaceId: string;
+  values: KVPair[];
+  rootDir: string;
+}) {
+  const miniflare = new mf.Miniflare({
+    script: "",
+    modules: true,
+    defaultPersistRoot: getDefaultPersistPath(input.rootDir),
+    kvNamespaces: { KV: input.namespaceId },
+    kvPersist: true,
+    log: process.env.DEBUG ? new mf.Log(mf.LogLevel.DEBUG) : undefined,
+  });
+  try {
+    await miniflare.ready;
+    const kv = await miniflare.getKVNamespace("KV");
+    await Promise.all(
+      input.values.map((record) =>
+        kv.put(
+          record.key,
+          typeof record.value === "string"
+            ? record.value
+            : JSON.stringify(record.value),
+          {
+            expiration: record.expiration,
+            expirationTtl: record.expirationTtl,
+            metadata: record.metadata,
+          },
+        ),
+      ),
+    );
+  } finally {
+    await miniflare.dispose();
   }
 }
 

@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import path from "pathe";
 import { describe, expect } from "vitest";
 import { alchemy } from "../../src/alchemy.ts";
 import { Ai } from "../../src/cloudflare/ai.ts";
@@ -211,7 +211,7 @@ describe("WranglerJson Resource", () => {
           name,
           browser: {
             binding: "browser",
-            experimental_remote: true,
+            remote: true,
           },
         });
       } finally {
@@ -247,7 +247,7 @@ describe("WranglerJson Resource", () => {
           name,
           ai: {
             binding: "AI",
-            experimental_remote: true,
+            remote: true,
           },
         });
       } finally {
@@ -499,10 +499,13 @@ describe("WranglerJson Resource", () => {
         await fs.mkdir(tempDir, { recursive: true });
         await fs.writeFile(entrypoint, esmWorkerScript);
 
-        const r2Bucket = await R2Bucket(`${BRANCH_PREFIX}-test-r2-bucket`, {
-          name: `${BRANCH_PREFIX}-test-r2-bucket`,
-          adopt: true,
-        });
+        const r2Bucket = await R2Bucket(
+          `${BRANCH_PREFIX}-test-r2-bucket-preview`,
+          {
+            name: `${BRANCH_PREFIX}-test-r2-bucket-preview`,
+            adopt: true,
+          },
+        );
 
         const worker = await Worker(name, {
           name,
@@ -537,11 +540,14 @@ describe("WranglerJson Resource", () => {
         await fs.mkdir(tempDir, { recursive: true });
         await fs.writeFile(entrypoint, esmWorkerScript);
 
-        const r2Bucket = await R2Bucket(`${BRANCH_PREFIX}-test-r2-bucket`, {
-          name: `${BRANCH_PREFIX}-test-r2-bucket`,
-          jurisdiction: "eu",
-          adopt: true,
-        });
+        const r2Bucket = await R2Bucket(
+          `${BRANCH_PREFIX}-test-r2-bucket-jurisdiction`,
+          {
+            name: `${BRANCH_PREFIX}-test-r2-bucket-jurisdiction`,
+            jurisdiction: "eu",
+            adopt: true,
+          },
+        );
 
         const worker = await Worker(name, {
           name,
@@ -589,7 +595,7 @@ describe("WranglerJson Resource", () => {
           cwd: tempDir,
           adopt: true,
           bindings: {
-            ASSETS: await Assets(`${name}-assets`, {
+            ASSETS: await Assets({
               path: assetsDir,
             }),
           },
@@ -614,7 +620,7 @@ describe("WranglerJson Resource", () => {
     });
   });
 
-  test("with recommended remote bindings should automatically set experimental_remote to true", async (scope) => {
+  test("with recommended remote bindings should automatically set remote to true", async (scope) => {
     const name = `${BRANCH_PREFIX}-test-worker-recommended-remote`;
     const tempDir = path.join(".out", "alchemy-recommended-remote-test");
     const entrypoint = path.join(tempDir, "worker.ts");
@@ -650,13 +656,11 @@ describe("WranglerJson Resource", () => {
 
       expect(spec).toMatchObject({
         name,
-        ai: { binding: "AI", experimental_remote: true },
-        browser: { binding: "BROWSER", experimental_remote: true },
-        dispatch_namespaces: [
-          { binding: "DISPATCH", experimental_remote: true },
-        ],
-        images: { binding: "IMAGES", experimental_remote: true },
-        vectorize: [{ binding: "VECTORIZE", experimental_remote: true }],
+        ai: { binding: "AI", remote: true },
+        browser: { binding: "BROWSER", remote: true },
+        dispatch_namespaces: [{ binding: "DISPATCH", remote: true }],
+        images: { binding: "IMAGES", remote: true },
+        vectorize: [{ binding: "VECTORIZE", remote: true }],
       });
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -664,7 +668,7 @@ describe("WranglerJson Resource", () => {
     }
   });
 
-  test("with dev.remote enabled should set experimental_remote to true", async (scope) => {
+  test("with dev.remote enabled should set remote to true", async (scope) => {
     const name = `${BRANCH_PREFIX}-test-worker-dev-remote`;
     const tempDir = path.join(".out", "alchemy-dev-remote-test");
     const entrypoint = path.join(tempDir, "worker.ts");
@@ -703,9 +707,9 @@ describe("WranglerJson Resource", () => {
 
       expect(spec).toMatchObject({
         name,
-        d1_databases: [{ binding: "D1", experimental_remote: true }],
-        kv_namespaces: [{ binding: "KV", experimental_remote: true }],
-        r2_buckets: [{ binding: "R2", experimental_remote: true }],
+        d1_databases: [{ binding: "D1", remote: true }],
+        kv_namespaces: [{ binding: "KV", remote: true }],
+        r2_buckets: [{ binding: "R2", remote: true }],
       });
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -792,12 +796,12 @@ describe("WranglerJson Resource", () => {
       const { spec } = await WranglerJson({ worker });
 
       expect(spec.queues?.consumers).toHaveLength(1);
-      expect(spec.queues?.consumers[0]).toMatchObject({
+      expect(spec.queues?.consumers?.[0]).toMatchObject({
         queue: queue.name, // Should use queue name, not ID
         max_batch_size: 25,
         max_concurrency: 5,
         max_retries: 3,
-        max_wait_time_ms: 1500,
+        max_batch_timeout: 1.5,
         retry_delay: 45,
       });
     } finally {
@@ -834,7 +838,7 @@ describe("WranglerJson Resource", () => {
       const { spec } = await WranglerJson({ worker });
 
       expect(spec.queues?.consumers).toHaveLength(1);
-      expect(spec.queues?.consumers[0]).toMatchObject({
+      expect(spec.queues?.consumers?.[0]).toMatchObject({
         queue: queue.name, // Should use queue name, not ID
       });
     } finally {

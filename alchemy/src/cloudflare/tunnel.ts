@@ -264,16 +264,14 @@ export interface OriginRequestConfig {
   tcpKeepAliveInterval?: number;
 }
 
-export function isTunnel(resource: Resource): resource is Tunnel {
-  return resource[ResourceKind] === "cloudflare::Tunnel";
+export function isTunnel(resource: any): resource is Tunnel {
+  return resource?.[ResourceKind] === "cloudflare::Tunnel";
 }
 
 /**
  * Output returned after Tunnel creation/update
  */
-export interface Tunnel
-  extends Resource<"cloudflare::Tunnel">,
-    Omit<TunnelProps, "delete" | "tunnelSecret"> {
+export interface Tunnel extends Omit<TunnelProps, "delete" | "tunnelSecret"> {
   /**
    * The name of the tunnel
    */
@@ -496,6 +494,9 @@ export const Tunnel = Resource(
     const name =
       props.name ?? this.output?.name ?? this.scope.createPhysicalName(id);
 
+    // Track if we're replacing the tunnel (don't fetch token in this case)
+    let isReplacing = false;
+
     if (this.phase === "update" && this.output.name !== name) {
       console.log("replacing tunnel", this.output.name, name);
       this.replace(true);
@@ -565,7 +566,6 @@ export const Tunnel = Resource(
           (error.message.includes("already have a tunnel with this name") ||
             error.message.includes("already exists"))
         ) {
-          console.log(error);
           logger.log(`Tunnel '${name}' already exists, adopting it`);
 
           // Find the existing tunnel by name
@@ -596,6 +596,12 @@ export const Tunnel = Resource(
           throw error;
         }
       }
+    }
+
+    // Ensure tunnel token is available (unless we're replacing)
+    // Sometimes Cloudflare doesn't return the token in the initial response
+    if (!isReplacing && !tunnelData.token) {
+      tunnelData.token = await getTunnelToken(api, tunnelData.id);
     }
 
     // Handle DNS records for ingress hostnames
@@ -667,7 +673,7 @@ export const Tunnel = Resource(
     }
 
     // Transform API response to our interface
-    return this({
+    return {
       tunnelId: tunnelData.id,
       accountTag: tunnelData.account_tag,
       name: tunnelData.name,
@@ -697,7 +703,7 @@ export const Tunnel = Resource(
       originRequest: props.originRequest,
       configSrc: props.configSrc,
       dnsRecords: Object.keys(dnsRecords).length > 0 ? dnsRecords : undefined,
-    });
+    };
   },
 );
 
@@ -919,4 +925,31 @@ export async function findTunnelByName(
 
   // No matching tunnel found
   return null;
+}
+
+/**
+ * Get tunnel token
+ */
+async function getTunnelToken(
+  api: CloudflareApi,
+  tunnelId: string,
+): Promise<string> {
+  const response = await api.get(
+    `/accounts/${api.accountId}/cfd_tunnel/${tunnelId}/token`,
+  );
+
+  if (!response.ok) {
+    logger.error(
+      `Failed to fetch token for tunnel ${tunnelId}: ${response.status} ${response.statusText}`,
+    );
+    await handleApiError(response, "get token", "tunnel", tunnelId);
+  }
+
+  const data = (await response.json()) as CloudflareApiResponse<string>;
+  if (!data.result) {
+    logger.warn(`Could not retrieve token for tunnel ${tunnelId}`);
+  } else {
+    logger.log(`Successfully fetched token for tunnel ${tunnelId}`);
+  }
+  return data.result;
 }

@@ -32,9 +32,6 @@ jobs:
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-2
 
-      - name: Install Playwright Browsers
-        run: bunx playwright install --with-deps chromium
-
       - name: Get Astro version
         id: astro-version
         run: echo "version=$(bun info astro version)" >> $GITHUB_OUTPUT
@@ -47,8 +44,14 @@ jobs:
             alchemy-web/.astro
           key: astro-cache-${{ steps.astro-version.outputs.version }}
 
-      - name: Check Types
-        run: bun run check
+      - name: Check Types and Lint
+        run: |
+          bun run build
+          bun run check
+
+      - name: Install Playwright Browsers
+        run: bun playwright install --with-deps chromium
+        working-directory: alchemy-web
 
       - name: Deploy Website
         id: deploy
@@ -57,12 +60,12 @@ jobs:
           bun install # to install the built `alchemy` CLI
           bun deploy:website
         env:
-          ALCHEMY_PASSWORD: ${{ env.ALCHEMY_PASSWORD }}
+          ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
           ALCHEMY_STATE_STORE: cloudflare
-          ALCHEMY_STATE_TOKEN: ${{ env.ALCHEMY_STATE_TOKEN }}
+          ALCHEMY_STATE_TOKEN: ${{ secrets.ALCHEMY_STATE_TOKEN }}
           AWS_REGION: us-west-2
-          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_KEY: ${{ env.CLOUDFLARE_API_KEY }}
-          CLOUDFLARE_EMAIL: ${{ env.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           GENERATE_OG_IMAGES: true
           STAGE: prod

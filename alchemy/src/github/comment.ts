@@ -47,9 +47,7 @@ export interface GitHubCommentProps {
 /**
  * Output returned after Comment creation/update
  */
-export interface GitHubComment
-  extends Resource<"github::Comment">,
-    Omit<GitHubCommentProps, "token"> {
+export interface GitHubComment extends Omit<GitHubCommentProps, "token"> {
   /**
    * The ID of the resource
    */
@@ -175,17 +173,17 @@ export const GitHubComment = Resource(
     props: GitHubCommentProps,
   ): Promise<GitHubComment> {
     // Create authenticated Octokit client - will automatically handle token resolution
-    const octokit = await createGitHubClient({
-      token: props.token?.unencrypted,
-    });
-
-    // Verify authentication and permissions
-    if (!this.quiet) {
-      await verifyGitHubAuth(octokit, props.owner, props.repository);
-    }
 
     if (this.phase === "delete") {
       if (this.output?.commentId && props.allowDelete) {
+        const octokit = await createGitHubClient({
+          token: props.token?.unencrypted,
+        });
+
+        // Verify authentication and permissions
+        if (!this.quiet) {
+          await verifyGitHubAuth(octokit, props.owner, props.repository);
+        }
         try {
           // Delete the comment
           await octokit.rest.issues.deleteComment({
@@ -211,6 +209,15 @@ export const GitHubComment = Resource(
       return this.destroy();
     }
 
+    const octokit = await createGitHubClient({
+      token: props.token?.unencrypted,
+    });
+
+    // Verify authentication and permissions
+    if (!this.quiet) {
+      await verifyGitHubAuth(octokit, props.owner, props.repository);
+    }
+
     try {
       if (this.phase === "update" && this.output?.commentId) {
         // Update existing comment
@@ -222,7 +229,7 @@ export const GitHubComment = Resource(
             body: props.body,
           });
 
-        return this({
+        return {
           id: `${props.owner}/${props.repository}/issues/${props.issueNumber}/comments/${updatedComment.id}`,
           commentId: updatedComment.id,
           owner: props.owner,
@@ -232,7 +239,7 @@ export const GitHubComment = Resource(
           allowDelete: props.allowDelete,
           htmlUrl: updatedComment.html_url,
           updatedAt: updatedComment.updated_at,
-        });
+        };
       } else {
         // Create new comment
         const { data: newComment } = await octokit.rest.issues.createComment({
@@ -242,7 +249,7 @@ export const GitHubComment = Resource(
           body: props.body,
         });
 
-        return this({
+        return {
           id: `${props.owner}/${props.repository}/issues/${props.issueNumber}/comments/${newComment.id}`,
           commentId: newComment.id,
           owner: props.owner,
@@ -252,7 +259,7 @@ export const GitHubComment = Resource(
           allowDelete: props.allowDelete,
           htmlUrl: newComment.html_url,
           updatedAt: newComment.updated_at,
-        });
+        };
       }
     } catch (error: any) {
       if (error.status === 403) {

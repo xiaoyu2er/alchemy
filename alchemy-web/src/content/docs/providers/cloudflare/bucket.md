@@ -49,21 +49,34 @@ const euBucket = await R2Bucket("eu-bucket", {
 });
 ```
 
-## With Public Access
+## With `r2.dev` Domain
 
-Create a development bucket with public access enabled:
+Create a development bucket with the `r2.dev` domain enabled:
 
 ```ts
 import { R2Bucket } from "alchemy/cloudflare";
 
 const publicBucket = await R2Bucket("public-assets", {
   name: "public-assets",
-  allowPublicAccess: true,
+  devDomain: true,
 });
-console.log(publicBucket.domain); // [random-id].r2.dev
+console.log(publicBucket.devDomain); // [random-id].r2.dev
 ```
 
 This enables the `r2.dev` domain for the bucket. This URL is rate-limited and not recommended for production use.
+
+## With Custom Domain
+
+Create a bucket with a custom domain:
+
+```ts
+import { R2Bucket } from "alchemy/cloudflare";
+
+const customDomainBucket = await R2Bucket("custom-domain-bucket", {
+  name: "custom-domain-bucket",
+  domains: "custom-domain.com", // or ["custom-domain-1.com", "custom-domain-2.com"] to set more than one
+});
+```
 
 ## With CORS
 
@@ -182,3 +195,76 @@ const bucket = await R2Bucket("legal-holds", {
 - **prefix**: Scope the lock rule to objects starting with the prefix. Omit or set to "" for all keys.
 - **enabled**: Defaults to `true` when omitted.
 - **Age condition fields**: lock uses `maxAgeSeconds` (seconds).
+
+## With Data Catalog
+
+Enable data catalog for the bucket.
+
+```ts
+import { R2Bucket } from "alchemy/cloudflare";
+
+const bucket = await R2Bucket("my-bucket", {
+  name: "my-bucket",
+  dataCatalog: true,
+});
+
+console.log(bucket.catalog);
+```
+
+## Object Operations
+
+Use the returned `R2Bucket` instance to work with objects directly from your scripts.
+
+```ts
+import { R2Bucket } from "alchemy/cloudflare";
+
+const bucket = await R2Bucket("my-bucket", {
+  name: "my-bucket",
+});
+```
+
+
+### `head`
+
+Retrieve metadata about an object.
+
+```ts
+const head = await bucket.head("example.txt");
+if (head) {
+  console.log(head.etag, head.size);
+}
+```
+
+### `get`
+
+Retrieve an object from the bucket.
+
+```ts
+const obj = await bucket.get("example.txt");
+const text = await obj?.text();
+```
+
+### `put`
+
+Upload an object to the bucket.
+
+```ts
+const putInfo = await bucket.put("example.txt", "Hello, R2!\n");
+```
+
+### `delete`
+
+Delete an object from the bucket.
+
+```ts
+await bucket.delete("example.txt");
+```
+
+### `list`  
+
+List objects in the bucket.
+
+```ts
+const list = await bucket.list();
+console.log(list.objects.length);
+```

@@ -2,7 +2,7 @@
 title: CLI
 description: The `alchemy` CLI deploys, destroys, and runs your Alchemy programs.
 sidebar:
-  order: 0
+  order: 1
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
@@ -29,13 +29,15 @@ alchemy deploy [script] [options]
 Deploy an Alchemy project by running `alchemy deploy`. 
 
 - `script` (optional): Path to the entrypoint file. Defaults to `./alchemy.run.ts` or `./alchemy.run.js`
-- `--cwd` - Path to the project directory (defaults to current directory)
-- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
+- `--app` - (optional) Specify which application to deploy. Defaults to all apps.
 - `--stage` - Specify which stage/environment to target. Defaults to your username (`$USER`, or `$USERNAME` on Windows)
+- `--profile` - The Alchemy profile to use for authoriziing requests (default: `default`)
 - `--env-file` - Path to environment file to load
 - `--watch` - Watch for changes to infrastructure and redeploy automatically (default: false)
 - `--force` - Apply updates to resources even if there are no changes (default: false)
 - `--adopt` - Adopt existing resources that are not yet managed by your Alchemy app (default: false)
+- `--cwd` - Path to the project directory (defaults to current directory)
+- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
 - `-h, --help` - Display help for command
 
 :::tip
@@ -48,6 +50,9 @@ alchemy deploy
 
 # specify a stage
 alchemy deploy --stage prod 
+
+# deploy the default stage
+alchemy deploy --profile prod
 
 # adopt existing resources
 alchemy deploy --adopt 
@@ -114,9 +119,11 @@ alchemy destroy [script] [options]
 Destroy all resources in an Alchemy project.
 
 - `script` (optional): Path to the entrypoint file. Defaults to `./alchemy.run.ts` or `./alchemy.run.js`
+- `--app` - (optional) Specify which application to deploy. Defaults to all apps.
+- `--stage` - Specify which stage/environment to target. Defaults to your username (`$USER`, or `$USERNAME` on Windows)
+- `--profile` - The Alchemy profile to use for authoriziing requests (default: `default`)
 - `--cwd` - Path to the project directory (defaults to current directory)
 - `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
-- `--stage` - Specify which stage/environment to target. Defaults to your username (`$USER`, or `$USERNAME` on Windows)
 - `--env-file` - Path to environment file to load
 - `-h, --help` - Display help for command
 
@@ -182,12 +189,14 @@ alchemy dev [script] [options]
 Run an Alchemy program in dev-mode with local simulation and hot reloading.
 
 - `script` (optional): Path to the entrypoint file. Defaults to `./alchemy.run.ts` or `./alchemy.run.js`
-- `--cwd` - Path to the project directory (defaults to current directory)
-- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
+- `--app` - (optional) Specify which application to deploy. Defaults to all apps.
 - `--stage` - Specify which stage/environment to target. Defaults to your username (`$USER`, or `$USERNAME` on Windows)
+- `--profile` - The Alchemy profile to use for authoriziing requests (default: `default`)
 - `--env-file` - Path to environment file to load
 - `--force` - Apply updates to resources even if there are no changes (default: false)
 - `--adopt` - Adopt existing resources that are not yet managed by your Alchemy app (default: false)
+- `--cwd` - Path to the project directory (defaults to current directory)
+- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
 - `-h, --help` - Display help for command
 
 :::tip
@@ -198,8 +207,11 @@ Here are some examples of how to use the `dev` command:
 # run dev mode with default settings
 alchemy dev
 
+# specify a profile
+alchemy dev --profile prod
+
 # specify a stage
-alchemy dev --stage dev
+alchemy dev --stage dev --profile dev
 
 # use a custom script
 alchemy dev ./my-infra.ts
@@ -258,11 +270,13 @@ alchemy run [script] [options]
 Run an Alchemy program with read-only access to your infrastructure. No changes will be applied to your resources.
 
 - `script` (optional): Path to the entrypoint file. Defaults to `./alchemy.run.ts` or `./alchemy.run.js`
-- `--cwd` - Path to the project directory (defaults to current directory)
-- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
+- `--app` - (optional) Specify which application to deploy. Defaults to all apps.
 - `--stage` - Specify which stage/environment to target. Defaults to your username (`$USER`, or `$USERNAME` on Windows)
+- `--profile` - The Alchemy profile to use for authoriziing requests (default: `default`)
 - `--env-file` - Path to environment file to load
 - `--watch` - Watch for changes to infrastructure and redeploy automatically (default: `false`)
+- `--cwd` - Path to the project directory (defaults to current directory)
+- `--quiet` - Suppress Create/Update/Delete messages (default: `false`) 
 - `-h, --help` - Display help for command
 
 :::tip
@@ -333,7 +347,7 @@ alchemy create [name] [options]
 Create a new Alchemy project from a template.
 
 - `name` (optional): Project name or path
-- `--template` - Project template type (choices: "typescript", "vite", "astro", "react-router", "sveltekit", "tanstack-start", "rwsdk", "nuxt")
+- `--template` - Project template type (choices: "typescript", "vite", "bun-spa", "astro", "react-router", "sveltekit", "tanstack-start", "rwsdk", "nuxt")
 - `--yes` - Skip prompts and use defaults (default: `false`)
 - `--overwrite` - Overwrite existing directory (default: `false`)
 - `--install` - Install dependencies after scaffolding
@@ -365,3 +379,88 @@ alchemy create my-app --overwrite
 alchemy create my-app --no-install
 ```
 :::
+
+## `init`
+
+```sh
+alchemy init [options]
+```
+
+Initialize Alchemy in an existing project. This command adds Alchemy infrastructure to projects that were created using other tools (like `bun init`, `vite create`, `npm create astro`, etc.).
+
+- `--framework` - Force a specific framework instead of auto-detection (choices: "typescript", "vite", "bun-spa", "astro", "react-router", "sveltekit", "tanstack-start", "rwsdk", "nuxt", "nextjs")
+- `--yes` - Skip prompts and use defaults (default: `false`)
+- `-h, --help` - Display help for command
+
+:::tip
+
+Here are some examples of how to use the `init` command:
+
+```sh
+# auto-detect framework and initialize interactively
+cd my-existing-project
+alchemy init
+
+# initialize with a specific framework
+alchemy init --framework bun-spa
+
+# skip prompts and use auto-detected framework
+alchemy init --yes
+```
+:::
+
+The `init` command will:
+- Auto-detect your framework from `package.json` dependencies
+- Create an `alchemy.run.ts` file with framework-specific configuration
+- Add Alchemy scripts to your `package.json` (`deploy`, `destroy`, `alchemy:dev`)
+- Install Alchemy and any required framework adapters as dev dependencies
+- Update configuration files as needed (e.g., `vite.config.ts`, `bunfig.toml`, etc.)
+
+:::note
+For BunSPA projects specifically, `alchemy init` will validate or create a `bunfig.toml` file with the required `env='BUN_PUBLIC_*'` configuration.
+:::
+
+## `configure`
+
+```sh
+alchemy configure [options]
+```
+
+Configure the login method for a cloud provider.
+
+- `-p, --profile` - The profile to configure (default: `default`)
+- `-h, --help` - Display help for command
+
+## `login`
+
+```sh
+alchemy login [options]
+```
+
+Login to a configured cloud provider. Run `alchemy configure` to configure a provider.
+
+- `-p, --profile` - The profile to login to (default: `default`)
+- `-h, --help` - Display help for command
+
+## `logout`
+
+```sh
+alchemy logout [options]
+```
+
+Logout of a configured cloud provider.
+
+- `-p, --profile` - The profile to logout from (default: `default`)
+- `-h, --help` - Display help for command
+
+## `util create-cloudflare-token`
+
+```sh
+alchemy util create-cloudflare-token
+```
+
+A utility for creating Cloudflare tokens.
+
+- `-p, --profile` - Create a cloudflare token mirroring the oauth scopes in the specified profile
+- `--god-token` - Create a "god token" with full write access to everything in a cloudflare account
+

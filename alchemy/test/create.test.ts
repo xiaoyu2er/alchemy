@@ -1,8 +1,8 @@
 import "../src/test/vitest.ts";
 
 import fs from "node:fs/promises";
-import path from "node:path";
 import url from "node:url";
+import path from "pathe";
 import { describe, expect, test } from "vitest";
 import { patchCatalogAndInstall, runCommand } from "./util.ts";
 
@@ -39,6 +39,7 @@ const variants = {
   "sveltekit-template": "--template=sveltekit",
   "rwsdk-template": "--template=rwsdk",
   "tanstack-start-template": "--template=tanstack-start",
+  "nextjs-template": "--template=nextjs",
   "nuxt-template": "--template=nuxt",
   "hono-template": "--template=hono",
 };

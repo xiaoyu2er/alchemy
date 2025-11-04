@@ -9,11 +9,11 @@ The Docker provider allows you to create, manage, and orchestrate Docker resourc
 
 The Docker provider includes the following resources:
 
-- [RemoteImage](./remote-image.md) - Pull and manage Docker images
-- [Image](./image.md) - Build Docker images from local Dockerfiles
-- [Container](./container.md) - Run and manage Docker containers
-- [Network](./network.md) - Create and manage Docker networks
-- [Volume](./volume.md) - Create and manage persistent Docker volumes
+- [RemoteImage](/providers/docker/remote-image/) - Pull and manage Docker images
+- [Image](/providers/docker/image/) - Build Docker images from local Dockerfiles
+- [Container](/providers/docker/container/) - Run and manage Docker containers
+- [Network](/providers/docker/network/) - Create and manage Docker networks
+- [Volume](/providers/docker/volume/) - Create and manage persistent Docker volumes
 
 ## Example
 
@@ -103,4 +103,4 @@ export const url = `http://localhost:3000`;
 
 ## Additional Resources
 
-For more complex examples, see the [Docker Example](https://github.com/sam-goodwin/alchemy/tree/main/examples/docker) in the Alchemy repository.
+For more complex examples, see the [Docker Example](https://github.com/alchemy-run/alchemy/tree/main/examples/docker) in the Alchemy repository.

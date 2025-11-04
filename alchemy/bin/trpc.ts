@@ -1,21 +1,21 @@
-import { trpcServer } from "trpc-cli";
-import { TelemetryClient } from "../src/util/telemetry/client.ts";
+import { cancel, log } from "@clack/prompts";
+import pc from "picocolors";
+import { trpcServer, type TrpcCliMeta } from "trpc-cli";
+import { createAndSendEvent } from "../src/util/telemetry.ts";
 
-export const t = trpcServer.initTRPC.create();
+export const t = trpcServer.initTRPC.meta<TrpcCliMeta>().create();
 
 export class ExitSignal extends Error {
-  constructor(public code: 0 | 1 = 0) {
+  constructor(public code = 0) {
     super(`Process exit with code ${code}`);
     this.name = "ExitSignal";
   }
 }
 
+export class CancelSignal extends Error {}
+
 const loggingMiddleware = t.middleware(async ({ path, next }) => {
-  const telemetry = TelemetryClient.create({
-    enabled: true,
-    quiet: true,
-  });
-  telemetry.record({
+  await createAndSendEvent({
     event: "cli.start",
     command: path,
   });
@@ -23,26 +23,38 @@ const loggingMiddleware = t.middleware(async ({ path, next }) => {
 
   try {
     const result = await next();
-    telemetry.record({
-      event: "cli.success",
-      command: path,
-    });
-    return result;
-  } catch (error) {
-    telemetry.record({
-      event:
-        error instanceof ExitSignal && error.code === 0
-          ? "cli.success"
-          : "cli.error",
-      command: path,
-    });
-    if (error instanceof ExitSignal) {
-      exitCode = error.code;
+    if (result.ok || result.error.cause instanceof CancelSignal) {
+      await createAndSendEvent({
+        event: "cli.success",
+        command: path,
+      });
+    } else if (result.error.cause instanceof ExitSignal) {
+      exitCode = result.error.cause.code;
+      await createAndSendEvent(
+        {
+          event: exitCode === 0 ? "cli.success" : "cli.error",
+          command: path,
+        },
+        result.error.cause,
+      );
     } else {
-      throw error;
+      log.error(
+        result.error.message
+          .split("\n")
+          .map((line) => pc.gray(`  ${line}`))
+          .join("\n"),
+      );
+      cancel();
+      await createAndSendEvent(
+        {
+          event: "cli.error",
+          command: path,
+        },
+        result.error.cause,
+      );
+      exitCode = 1;
     }
   } finally {
-    await telemetry.finalize();
     //* this is a node issue https://github.com/nodejs/node/issues/56645
     await new Promise((resolve) => setTimeout(resolve, 100));
     process.exit(exitCode);
@@ -50,3 +62,24 @@ const loggingMiddleware = t.middleware(async ({ path, next }) => {
 });
 
 export const loggedProcedure = t.procedure.use(loggingMiddleware);
+
+// wrap procedure to improve error handling
+// TODO(john): use this pattern for other procedures
+export const authProcedure = loggedProcedure.use(async (opts) => {
+  const result = await opts.next();
+  if (result.ok) return result;
+  if (result.error.cause instanceof CancelSignal) {
+    cancel(pc.red("Operation cancelled."));
+    return result;
+  }
+  if (result.error.cause instanceof ExitSignal) return result;
+  log.error(pc.red("An unexpected error occurred."));
+  log.error(
+    result.error.message
+      .split("\n")
+      .map((line) => pc.gray(`  ${line}`))
+      .join("\n"),
+  );
+  cancel();
+  throw new ExitSignal(1);
+});

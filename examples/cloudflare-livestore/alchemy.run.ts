@@ -1,5 +1,3 @@
-/// <reference types="@types/node" />
-
 import alchemy from "alchemy";
 import { D1Database, DurableObjectNamespace, Vite } from "alchemy/cloudflare";
 
@@ -20,6 +18,9 @@ export const server = await Vite("server", {
     WEBSOCKET_SERVER: DurableObjectNamespace("websocket-server", {
       className: "WebSocketServer",
     }),
+  },
+  dev: {
+    command: "vite dev --port 5002",
   },
 });
 

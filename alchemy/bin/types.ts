@@ -3,11 +3,13 @@ import z from "zod";
 export const TEMPLATE_DEFINITIONS = [
   { name: "hono", description: "Hono" },
   { name: "vite", description: "React Vite" },
+  { name: "bun-spa", description: "Bun SPA" },
   { name: "astro", description: "Astro SSR" },
   { name: "react-router", description: "React Router" },
   { name: "sveltekit", description: "SvelteKit" },
   { name: "tanstack-start", description: "TanStack Start" },
   { name: "rwsdk", description: "Redwood SDK" },
+  { name: "nextjs", description: "Next.js" },
   { name: "nuxt", description: "Nuxt.js" },
   { name: "typescript", description: "TypeScript Worker" },
 ] as const;

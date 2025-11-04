@@ -43,7 +43,7 @@ describe("R2 Bucket Resource", async () => {
         adopt: true,
       });
       expect(bucket.name).toEqual(testId);
-      expect(bucket.domain).toBeUndefined();
+      expect(bucket.devDomain).toBeUndefined();
 
       // Check if bucket exists by getting it explicitly
       const gotBucket = await getBucket(api, testId);
@@ -52,9 +52,9 @@ describe("R2 Bucket Resource", async () => {
       // Update the bucket to enable public access
       bucket = await R2Bucket(testId, {
         name: testId,
-        allowPublicAccess: true,
+        devDomain: true,
       });
-      expect(bucket.domain).toBeDefined();
+      expect(bucket.devDomain).toMatch(/.*\.r2\.dev$/);
 
       const publicAccessResponse = await api.get(
         `/accounts/${api.accountId}/r2/buckets/${testId}/domains/managed`,
@@ -140,7 +140,9 @@ describe("R2 Bucket Resource", async () => {
       expect(putResponse.status).toEqual(200);
 
       // Verify the file exists in the bucket
-      const { keys } = await listObjects(api, bucketName, bucket);
+      const keys = (await listObjects(api, bucketName, bucket)).objects.map(
+        (o) => o.key,
+      );
       expect(keys.length).toBeGreaterThan(0);
       expect(keys).toContain(testKey);
 
@@ -182,6 +184,7 @@ describe("R2 Bucket Resource", async () => {
 
       expect(changedBucket.name).toEqual(`${nameChangeTestId}-changed`);
 
+      await scope.finalize();
       // should be replaced
       await assertBucketDeleted(originalBucket);
     } finally {
@@ -268,7 +271,7 @@ describe("R2 Bucket Resource", async () => {
       const bucket = await R2Bucket(bucketName, {
         name: bucketName,
         adopt: true,
-        allowPublicAccess: true,
+        devDomain: true,
         empty: true,
         cors: [
           {
@@ -279,8 +282,8 @@ describe("R2 Bucket Resource", async () => {
           },
         ],
       });
-      expect(bucket.allowPublicAccess).toEqual(true);
-      expect(bucket.domain).toBeDefined();
+      expect(bucket.devDomain).toMatch(/.*\.r2\.dev$/);
+      expect(bucket.domains).toBeUndefined();
       expect(bucket.cors).toEqual([
         {
           allowed: {
@@ -296,23 +299,29 @@ describe("R2 Bucket Resource", async () => {
       });
       expect(putResponse.status).toEqual(200);
 
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // wait for CORS to propagate
-
-      const getResponse = await fetch(
-        `https://${bucket.domain}/test-file.txt`,
-        {
-          method: "OPTIONS",
-          headers: {
-            Origin: "https://example.com",
+      // Loop for up to 60s until CORS headers are properly propagated (eventually consistent)
+      for (let i = 0; i < 60; i++) {
+        const getResponse = await fetch(
+          `https://${bucket.devDomain}/test-file.txt`,
+          {
+            method: "OPTIONS",
+            headers: {
+              Origin: "https://example.com",
+            },
           },
-        },
-      );
-      expect(getResponse.headers.get("Access-Control-Allow-Origin")).toEqual(
-        "*",
-      );
-      expect(getResponse.headers.get("Access-Control-Allow-Methods")).toEqual(
-        "GET",
-      );
+        );
+        const allowOrigin = getResponse.headers.get(
+          "Access-Control-Allow-Origin",
+        );
+        const allowMethods = getResponse.headers.get(
+          "Access-Control-Allow-Methods",
+        );
+
+        if (allowOrigin === "*" && allowMethods === "GET") {
+          return; // success
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
     } finally {
       await destroy(scope);
     }
@@ -422,6 +431,127 @@ describe("R2 Bucket Resource", async () => {
       expect(cleared.length).toEqual(0);
     } finally {
       await destroy(scope);
+    }
+  });
+
+  test("bucket operations head, get, put, and delete objects", async (scope) => {
+    const bucketName = `${BRANCH_PREFIX.toLowerCase()}-test-bucket-ops`;
+    let bucket: R2Bucket | undefined;
+
+    try {
+      // Create a test bucket
+      bucket = await R2Bucket(bucketName, {
+        name: bucketName,
+        adopt: true,
+        empty: true,
+      });
+      expect(bucket.name).toEqual(bucketName);
+
+      const testKey = "test-object.txt";
+      const testContent = "Hello, R2 Bucket Operations!";
+      const updatedContent = "Updated content for testing";
+      await bucket.delete(testKey);
+      let putObj = await bucket.put(testKey, testContent);
+      expect(putObj.size).toBeTypeOf("number");
+      expect(putObj.size).toEqual(testContent.length);
+      let obj = await bucket.head(testKey);
+      expect(obj).toBeDefined();
+      expect(obj?.etag).toEqual(putObj.etag);
+      expect(obj?.size).toEqual(putObj.size);
+      putObj = await bucket.put(testKey, updatedContent);
+      obj = await bucket.head(testKey);
+      expect(obj?.etag).toEqual(putObj.etag);
+      const getObj = await bucket.get(testKey);
+      await expect(getObj?.text()).resolves.toEqual(updatedContent);
+
+      const listObj = await bucket.list();
+
+      // console.log(JSON.stringify(listObj, null, 2));
+      expect(listObj.objects.length).toEqual(1);
+      expect(listObj.objects[0].key).toEqual(testKey);
+      expect(listObj.truncated).toEqual(false);
+      expect(listObj.objects).toEqual([
+        {
+          key: testKey,
+          etag: putObj.etag,
+          uploaded: putObj.uploaded,
+          size: putObj.size,
+        },
+      ]);
+
+      await bucket.delete(testKey);
+      await expect(bucket.head(testKey)).resolves.toBeNull();
+      await expect(bucket.get(testKey)).resolves.toBeNull();
+
+      expect(await bucket.list()).toMatchObject({
+        objects: [],
+        truncated: false,
+      });
+    } finally {
+      await scope.finalize();
+    }
+  });
+
+  test("bucket with data catalog", async (scope) => {
+    const bucketName = `${BRANCH_PREFIX.toLowerCase()}-test-data-catalog`;
+    try {
+      let bucket = await R2Bucket(bucketName, {
+        name: bucketName,
+        adopt: true,
+        dataCatalog: true,
+      });
+      expect(bucket.catalog).toBeDefined();
+      expect(bucket.catalog?.id).toBeDefined();
+      expect(bucket.catalog?.name).toBeDefined();
+      expect(bucket.catalog?.host).toBeDefined();
+
+      bucket = await R2Bucket(bucketName, {
+        name: bucketName,
+        adopt: true,
+        dataCatalog: false,
+      });
+      expect(bucket.catalog).toBeUndefined();
+
+      bucket = await R2Bucket(bucketName, {
+        name: bucketName,
+        adopt: true,
+        dataCatalog: true,
+      });
+      expect(bucket.catalog).toBeDefined();
+      expect(bucket.catalog?.id).toBeDefined();
+      expect(bucket.catalog?.name).toBeDefined();
+      expect(bucket.catalog?.host).toBeDefined();
+    } finally {
+      await destroy(scope);
+    }
+  });
+
+  test("bucket put operation with headers", async (scope) => {
+    const bucketName = `${BRANCH_PREFIX.toLowerCase()}-test-bucket-put-with-headers`;
+    try {
+      let bucket = await R2Bucket(bucketName, {
+        name: bucketName,
+        adopt: true,
+        empty: true,
+      });
+      expect(bucket.name).toEqual(bucketName);
+
+      const testKey = "test-object.txt";
+      const testContent = '{ "name": "test" }';
+      await bucket.put(testKey, testContent, {
+        httpMetadata: {
+          contentType: "application/json",
+        },
+      });
+
+      let obj = await bucket.head(testKey);
+      expect(obj?.httpMetadata?.contentType).toEqual("application/json");
+
+      const getObj = await bucket.get(testKey);
+      await expect(getObj?.text()).resolves.toEqual(testContent);
+      expect(getObj?.httpMetadata?.contentType).toEqual("application/json");
+    } finally {
+      await scope.finalize();
     }
   });
 });

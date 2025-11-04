@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import path from "node:path";
+import path from "pathe";
 import { memoize } from "../../util/memoize.ts";
 import type { WorkerBundle } from "../worker-bundle.ts";
 
 export type InternalWorker =
   | "cloudflare-state-store"
   | "dofs-state-store"
-  | "remote-binding-proxy";
+  | "remote-binding-proxy"
+  | "tunnel-proxy";
 
 export const getInternalWorkerBundle = memoize(async (name: InternalWorker) => {
   const content = await fs.readFile(

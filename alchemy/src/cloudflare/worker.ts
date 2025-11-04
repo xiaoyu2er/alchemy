@@ -15,6 +15,7 @@ import {
 import type { Assets } from "./assets.ts";
 import type {
   Bindings,
+  Self,
   WorkerBindingDurableObjectNamespace,
   WorkerBindingSpec,
 } from "./bindings.ts";
@@ -33,6 +34,7 @@ import {
 } from "./durable-object-namespace.ts";
 import { type EventSource, isQueueEventSource } from "./event-source.ts";
 import { deleteMiniflareWorkerData } from "./miniflare/delete.ts";
+import { MiniflareController } from "./miniflare/miniflare-controller.ts";
 import {
   QueueConsumer,
   deleteQueueConsumer,
@@ -58,6 +60,10 @@ import { Workflow, isWorkflow, upsertWorkflow } from "./workflow.ts";
 // Previous versions of `Worker` used the `Bundle` resource.
 // This import is here to avoid errors when destroying the `Bundle` resource.
 import "../esbuild/bundle.ts";
+import { Scope } from "../scope.ts";
+import { extractCloudflareResult } from "./api-response.ts";
+import type { WorkerRef } from "./worker-ref.ts";
+import { createEmptyWorker, exists } from "./worker-stub.ts";
 
 /**
  * Configuration options for static assets
@@ -163,18 +169,23 @@ export interface BaseWorkerProps<
   url?: boolean;
 
   /**
-   * Observability configuration for the worker
+   * Specify the observability behavior of the Worker.
    *
-   * Controls whether worker logs are enabled
-   * @default { enabled: true }
+   * @see https://developers.cloudflare.com/workers/wrangler/configuration/#observability
+   * @default - `enabled: true`
    */
-  observability?: {
-    /**
-     * Whether to enable worker logs
-     * @default true
-     */
-    enabled?: boolean;
-  };
+  observability?: WorkerObservability;
+
+  /**
+   * Enable Workers Logpush to export trace events (request/response metadata,
+   * console logs, and exceptions) to external destinations.
+   *
+   * Requires a separate Logpush job configuration via the Cloudflare API.
+   *
+   * @see https://developers.cloudflare.com/workers/observability/logging/logpush
+   * @default false
+   */
+  logpush?: boolean;
 
   /**
    * Whether to adopt the Worker if it already exists when creating
@@ -321,7 +332,7 @@ export interface BaseWorkerProps<
   dev?:
     | {
         /**
-         * Port to use for local development
+         * Port to use for local development.
          */
         port?: number;
         /**
@@ -330,11 +341,19 @@ export interface BaseWorkerProps<
          * @default false
          */
         remote?: boolean;
+        /**
+         * Whether to expose the worker via a Cloudflare Tunnel.
+         *
+         * @default false
+         */
+        tunnel?: boolean;
         url?: undefined;
       }
     | {
         url: string;
         remote?: undefined;
+        tunnel?: undefined;
+        port?: undefined;
       };
 
   /**
@@ -363,6 +382,90 @@ export interface BaseWorkerProps<
      * @default 30_000 (30 seconds)
      */
     cpu_ms?: number;
+  };
+
+  /**
+   * Tail consumers that will receive execution logs from this worker
+   */
+  tailConsumers?: Array<Worker | { service: string }>;
+}
+
+export interface WorkerObservability {
+  /**
+   * If observability is enabled for this Worker
+   *
+   * @default true
+   */
+  enabled?: boolean;
+
+  /**
+   * A number between 0 and 1, where 0 indicates zero out of one hundred requests are logged, and 1 indicates every request is logged.
+   * If head_sampling_rate is unspecified, it is configured to a default value of 1 (100%).
+   * @see https://developers.cloudflare.com/workers/observability/logs/workers-logs/#head-based-sampling
+   * @default 1
+   */
+  headSamplingRate?: number;
+
+  /**
+   * Configuration for worker logs
+   */
+  logs?: {
+    /**
+     * Whether logs are enabled
+     * @default true
+     */
+    enabled?: boolean;
+
+    /**
+     * The sampling rate for logs
+     */
+    headSamplingRate?: number;
+
+    /**
+     * Set to false to disable invocation logs
+     * @default true
+     */
+    invocationLogs?: boolean;
+
+    /**
+     * If logs should be persisted to the Cloudflare observability platform where they can be queried in the dashboard.
+     * @default true
+     */
+    persist?: boolean;
+
+    /**
+     * What destinations logs emitted from the Worker should be sent to.
+     * @default []
+     */
+    destinations?: string[];
+  };
+
+  /**
+   * Configuration for worker traces
+   */
+  traces?: {
+    /**
+     * Whether traces are enabled
+     * @default true
+     */
+    enabled?: boolean;
+
+    /**
+     * The sampling rate for traces
+     */
+    headSamplingRate?: number;
+
+    /**
+     * If traces should be persisted to the Cloudflare observability platform where they can be queried in the dashboard.
+     * @default true
+     */
+    persist?: boolean;
+
+    /**
+     * What destinations traces emitted from the Worker should be sent to.
+     * @default []
+     */
+    destinations?: string[];
   };
 }
 
@@ -421,8 +524,8 @@ export type WorkerProps<
   RPC extends Rpc.WorkerEntrypointBranded = Rpc.WorkerEntrypointBranded,
 > = InlineWorkerProps<B, RPC> | EntrypointWorkerProps<B, RPC>;
 
-export function isWorker(resource: Resource): resource is Worker<any> {
-  return resource[ResourceKind] === "cloudflare::Worker";
+export function isWorker(resource: any): resource is Worker<any> {
+  return resource?.[ResourceKind] === "cloudflare::Worker";
 }
 
 /**
@@ -431,109 +534,108 @@ export function isWorker(resource: Resource): resource is Worker<any> {
 export type Worker<
   B extends Bindings | undefined = Bindings | undefined,
   RPC extends Rpc.WorkerEntrypointBranded = Rpc.WorkerEntrypointBranded,
-> = Resource<"cloudflare::Worker"> &
-  Omit<WorkerProps<B>, "url" | "script" | "routes" | "domains"> & {
-    /** @internal phantom property */
-    __rpc__?: RPC;
+> = Omit<WorkerProps<B>, "url" | "script" | "routes" | "domains"> & {
+  /** @internal phantom property */
+  __rpc__?: RPC;
 
-    type: "service";
+  type: "service";
 
-    /**
-     * The ID of the worker
-     */
-    id: string;
+  /**
+   * The ID of the worker
+   */
+  id: string;
 
-    /**
-     * The name of the worker
-     */
-    name: string;
+  /**
+   * The name of the worker
+   */
+  name: string;
 
-    /**
-     * The root directory of the project
-     * @default process.cwd()
-     */
-    cwd: string;
+  /**
+   * The root directory of the project
+   * @default process.cwd()
+   */
+  cwd: string;
 
-    /**
-     * Time at which the worker was created
-     */
-    createdAt: number;
+  /**
+   * Time at which the worker was created
+   */
+  createdAt: number;
 
-    /**
-     * Time at which the worker was last updated
-     */
-    updatedAt: number;
+  /**
+   * Time at which the worker was last updated
+   */
+  updatedAt: number;
 
-    /**
-     * The worker's URL if enabled
-     * Format: {name}.{subdomain}.workers.dev
-     *
-     * @default true
-     */
-    url?: string;
+  /**
+   * The worker's URL if enabled
+   * Format: {name}.{subdomain}.workers.dev
+   *
+   * @default true
+   */
+  url?: string;
 
-    /**
-     * The bindings that were created
-     */
-    bindings: B;
+  /**
+   * The bindings that were created
+   */
+  bindings: B;
 
-    /**
-     * Configuration for static assets
-     */
-    assets?: AssetsConfig;
+  /**
+   * Configuration for static assets
+   */
+  assets?: AssetsConfig;
 
-    /**
-     * The routes that were created for this worker
-     */
-    routes?: Route[];
+  /**
+   * The routes that were created for this worker
+   */
+  routes?: Route[];
 
-    /**
-     * The custom domains that were created for this worker
-     */
-    domains?: CustomDomain[];
+  /**
+   * The custom domains that were created for this worker
+   */
+  domains?: CustomDomain[];
 
-    // phantom property (for typeof myWorker.Env)
-    Env: B extends Bindings
-      ? {
-          [bindingName in keyof B]: Bound<B[bindingName]>;
-        }
-      : undefined;
+  // phantom property (for typeof myWorker.Env)
+  Env: B extends Bindings
+    ? {
+        [bindingName in keyof B]: Bound<B[bindingName]>;
+      }
+    : undefined;
 
-    /**
-     * The compatibility date for the worker
-     */
-    compatibilityDate: string;
+  /**
+   * The compatibility date for the worker
+   */
+  compatibilityDate: string;
 
-    /**
-     * The compatibility flags for the worker
-     */
-    compatibilityFlags: string[];
+  /**
+   * The compatibility flags for the worker
+   */
+  compatibilityFlags: string[];
 
-    /**
-     * The dispatch namespace this worker is deployed to
-     */
-    namespace?: string | DispatchNamespace;
+  /**
+   * The dispatch namespace this worker is deployed to
+   */
+  namespace?: string | DispatchNamespace;
 
-    /**
-     * Version label for this worker deployment
-     */
-    version?: string;
+  /**
+   * Version label for this worker deployment
+   */
+  version?: string;
 
-    /**
-     * Smart placement configuration for the worker
-     */
-    placement?: {
-      mode: "smart";
-    };
-
-    /**
-     * Whether the worker has a remote deployment
-     * @internal
-     */
-    dev?: {
-      hasRemote: boolean;
-    };
+  /**
+   * Smart placement configuration for the worker
+   */
+  placement?: {
+    mode: "smart";
   };
+
+  /**
+   * Whether the worker has a remote deployment
+   * @internal
+   */
+  dev?: {
+    hasRemote: boolean;
+  };
+};
 
 /**
  * A Cloudflare Worker is a serverless function that can be deployed to the Cloudflare network.
@@ -603,7 +705,7 @@ export type Worker<
  *
  * @example
  * // Create a worker with static assets:
- * const staticAssets = await Assets("static", {
+ * const staticAssets = await Assets({
  *   path: "./src/assets"
  * });
  *
@@ -699,6 +801,25 @@ export function Worker<const B extends Bindings>(
   return _Worker(id, props as WorkerProps<B>);
 }
 
+Worker.experimentalEntrypoint = <RPC extends Rpc.WorkerEntrypointBranded>(
+  worker: Worker | WorkerRef | Self,
+  entrypoint: string,
+) => {
+  if (Scope.getScope()?.local) {
+    logger.warn(
+      "Worker.experimentalEntrypoint is not supported in local development. See: https://github.com/cloudflare/workers-sdk/issues/10681",
+    );
+  }
+  return {
+    ...worker,
+    // we rename the entrypoint in order to prevent collisions with entrypoint on Worker
+    __entrypoint__: entrypoint,
+  } as (Worker | WorkerRef) & {
+    __entrypoint__?: string;
+    __rpc__?: RPC;
+  };
+};
+
 const _Worker = Resource(
   "cloudflare::Worker",
   {
@@ -711,7 +832,9 @@ const _Worker = Resource(
   ) {
     let adopt = props.adopt ?? this.scope.adopt;
     const workerName =
-      props.name ?? this.output?.name ?? this.scope.createPhysicalName(id);
+      props.name ??
+      this.output?.name ??
+      this.scope.createPhysicalName(id).toLowerCase();
     if (this.phase === "create" && !props.adopt) {
       // it is possible that this worker already exists and was created by the old Website wrapper with a nested scope
       // we need to detect this and set adopt=true so that the previous version will be adopted seamlessly
@@ -755,7 +878,9 @@ const _Worker = Resource(
         compatibilityDate,
         compatibilityFlags,
         outdir:
-          props.bundle?.outdir ?? path.join(cwd, ".alchemy", "out", workerName),
+          props.bundle?.outdir ??
+          // the out folder can't be moved to the root of a monorepo, it must be ${cwd} or else miniflare throws a fit
+          path.join(process.cwd(), ".alchemy", "out", workerName),
         sourceMap: "sourceMap" in props ? props.sourceMap : undefined,
       });
 
@@ -812,17 +937,24 @@ const _Worker = Resource(
       if (options.bundle.isOk()) {
         await options.bundle.value.delete?.();
       }
-      await deleteMiniflareWorkerData(options.name, {
+      await deleteMiniflareWorkerData(this.scope, options.name, {
         durableObjects: options.durableObjects,
         workflows: options.workflows,
       });
-      if (!props.version && this.output?.dev?.hasRemote !== false) {
+      if (this.output?.dev?.hasRemote !== false) {
         const api = await createCloudflareApi(props);
-        await deleteQueueConsumers(api, options.name);
-        await deleteWorker(api, {
-          scriptName: options.name,
-          dispatchNamespace: options.dispatchNamespace,
-        });
+        if (props.version) {
+          //* if the worker exists we deploy an empty version so we can destroy
+          if (await exists(api, options.name)) {
+            await createEmptyWorker(api, options.name, props.version);
+          }
+        } else {
+          await deleteQueueConsumers(api, options.name);
+          await deleteWorker(api, {
+            scriptName: options.name,
+            dispatchNamespace: options.dispatchNamespace,
+          });
+        }
       }
       return this.destroy();
     }
@@ -838,9 +970,6 @@ const _Worker = Resource(
       if (props.dev?.url) {
         url = props.dev.url;
       } else {
-        const { MiniflareController } = await import(
-          "./miniflare/miniflare-controller.js"
-        );
         const controller = MiniflareController.singleton;
         url = await controller.add({
           api,
@@ -852,10 +981,13 @@ const _Worker = Resource(
           eventSources: props.eventSources,
           assets: props.assets,
           bundle,
-          port: (props.dev as { port?: number } | undefined)?.port,
+          port: props.dev?.port,
+          tunnel: props.dev?.tunnel ?? this.scope.tunnel,
+          cwd: props.cwd ?? process.cwd(),
         });
         this.onCleanup(() => controller.dispose());
       }
+
       await provisionResources(
         {
           ...props,
@@ -868,7 +1000,7 @@ const _Worker = Resource(
           containers: options.containers,
         },
       );
-      return this({
+      return {
         ...props,
         type: "service",
         id,
@@ -887,7 +1019,7 @@ const _Worker = Resource(
           hasRemote: this.output?.dev?.hasRemote ?? false,
         },
         Env: undefined!,
-      } as unknown as Worker<B>);
+      } as unknown as Worker<B>;
     }
 
     if (this.phase === "create" || this.output.dev?.hasRemote === false) {
@@ -986,6 +1118,7 @@ const _Worker = Resource(
         props.crons?.map((cron) => ({ cron })) ?? [],
       );
     }
+
     await Promise.all(
       options.workflows.map((workflow) =>
         upsertWorkflow(api, {
@@ -1012,7 +1145,7 @@ const _Worker = Resource(
     );
 
     const now = new Date();
-    return this({
+    return {
       ...props,
       type: "service",
       id,
@@ -1031,6 +1164,7 @@ const _Worker = Resource(
       url: subdomain?.url,
       assets: props.assets,
       crons: props.crons,
+      tailConsumers: props.tailConsumers,
       routes,
       domains,
       namespace: props.namespace,
@@ -1041,7 +1175,7 @@ const _Worker = Resource(
       dev: {
         hasRemote: true,
       },
-    } as unknown as Worker<B>);
+    } as unknown as Worker<B>;
   },
 );
 
@@ -1109,11 +1243,17 @@ async function provisionResources<B extends Bindings>(
     containers: options.containers,
     domains: props.domains?.map((domain) => {
       if (typeof domain === "string") {
+        if (domain === "") {
+          throw new Error("Domain names cannot be empty strings");
+        }
         return {
           name: domain,
           zoneId: undefined,
           adopt: props.adopt,
         };
+      }
+      if (domain.domainName === "") {
+        throw new Error("Domain names cannot be empty strings");
       }
       return {
         name: domain.domainName,
@@ -1157,6 +1297,7 @@ async function provisionResources<B extends Bindings>(
       apiToken: props.apiToken,
       email: props.email,
       baseUrl: props.baseUrl,
+      profile: props.profile,
     } satisfies CloudflareApiOptions,
   };
 
@@ -1173,15 +1314,10 @@ async function provisionResources<B extends Bindings>(
         ? Promise.all(
             input.containers.map(async (container) => {
               return await ContainerApplication(container.id, {
-                image: container.image,
-                name: container.name,
-                instanceType: container.instanceType,
-                observability: container.observability,
+                ...container,
                 durableObjects: {
                   namespaceId: await getContainerNamespaceId(container),
                 },
-                schedulingPolicy: container.schedulingPolicy,
-                adopt: container.adopt,
                 dev: options.local,
                 ...input.api,
               });
@@ -1451,54 +1587,40 @@ export async function putWorker(
   return withExponentialBackoff(
     async () => {
       const { body, endpoint, method } = await prepareWorkerUpload(api, props);
-      const uploadResponse = await api.fetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        body,
-      });
-
-      // Check if the upload was successful
-      if (!uploadResponse.ok) {
-        try {
-          return await handleApiError(
-            uploadResponse,
-            version ? "uploading worker version" : "uploading worker script",
-            "worker",
-            workerName,
-          );
-        } catch (error) {
-          if (error instanceof CloudflareApiError && error.status === 412) {
-            // this happens when adopting a Worker managed with Wrangler
-            // because wrangler includes a migration tag and we do not
-            // currently, the only way to discover the old_tag is through the error message
-            // Get Worker Script Settings is meant to return it (according to the docs)
-            // but it doesn't work at runtime
-            //
-            // so, we catch the error and parse out the tag and then retry
-            if (error.message.includes("when expected tag is")) {
-              const newTag = error.message.match(
-                /when expected tag is ['"]?(v\d+)['"]?/,
-              )?.[1];
-              if (newTag) {
-                return await putWorker(api, {
-                  ...props,
-                  migrationTag: newTag,
-                });
-              }
-            } else {
-              throw error;
-            }
-          } else {
-            throw error;
+      try {
+        return await extractCloudflareResult<PutWorkerResult>(
+          version
+            ? `upload version for worker "${workerName}"`
+            : `upload worker script "${workerName}"`,
+          api.fetch(endpoint, {
+            method,
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+            body,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof CloudflareApiError && error.status === 412) {
+          // this happens when adopting a Worker managed with Wrangler
+          // because wrangler includes a migration tag and we do not
+          // currently, the only way to discover the old_tag is through the error message
+          // Get Worker Script Settings is meant to return it (according to the docs)
+          // but it doesn't work at runtime
+          //
+          // so, we catch the error and parse out the tag and then retry
+          const newTag = error.message.match(
+            /when expected tag is ['"]?([^'"]+)['"]?/,
+          )?.[1];
+          if (newTag) {
+            return await putWorker(api, {
+              ...props,
+              migrationTag: newTag,
+            });
           }
         }
+        throw error;
       }
-      const responseData = (await uploadResponse.json()) as {
-        result: PutWorkerResult;
-      };
-      return responseData.result;
     },
     (err) =>
       err.status === 404 ||
@@ -1556,7 +1678,7 @@ async function assertWorkerDoesNotExist(
   );
 }
 
-async function getScriptMetadata(
+export async function getScriptMetadata(
   api: CloudflareApi,
   scriptName: string,
 ): Promise<WorkerScriptMetadata | undefined> {

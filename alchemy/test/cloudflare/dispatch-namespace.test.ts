@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import path from "pathe";
 import { describe, expect } from "vitest";
 import { alchemy } from "../../src/alchemy.ts";
 import { createCloudflareApi } from "../../src/cloudflare/api.ts";
@@ -173,7 +173,7 @@ describe("Dispatch Namespace Resource", () => {
       ]);
 
       // 2. Create assets resource
-      const assets = await Assets("dispatch-static-assets", {
+      const assets = await Assets({
         path: tempDir,
       });
 

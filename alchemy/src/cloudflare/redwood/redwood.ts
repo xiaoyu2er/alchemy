@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "pathe";
 import type { Assets } from "../assets.ts";
 import type { Bindings } from "../bindings.ts";
 import { Vite, type ViteProps } from "../vite/vite.ts";
@@ -12,7 +12,7 @@ export type Redwood<B extends Bindings> = B extends { ASSETS: any }
   : Worker<B & { ASSETS: Assets }>;
 
 /**
- * Deploy a RedwoodJS application to Cloudflare Pages with automatically configured defaults.
+ * Deploy a RedwoodJS application to Cloudflare Workers with automatically configured defaults.
  *
  * This resource handles the deployment of RedwoodJS applications with optimized settings for
  * Cloudflare Workers, including proper build commands and compatibility flags.
@@ -50,9 +50,9 @@ export async function Redwood<B extends Bindings>(
       },
     },
     noBundle: props?.noBundle ?? true,
-    entrypoint: props?.entrypoint ?? path.join("dist", "worker", "worker.js"),
+    entrypoint: props?.entrypoint ?? path.join("dist", "worker", "index.js"),
     compatibilityFlags: ["nodejs_compat", ...(props?.compatibilityFlags ?? [])],
-    compatibilityDate: props?.compatibilityDate ?? "2025-04-02",
+    compatibilityDate: props?.compatibilityDate ?? "2025-08-21",
     wrangler: {
       main: props?.wrangler?.main ?? "src/worker.tsx",
       transform: props?.wrangler?.transform,

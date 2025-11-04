@@ -48,7 +48,7 @@ export interface VolumeProps {
 /**
  * Docker Volume resource
  */
-export interface Volume extends Resource<"docker::Volume">, VolumeProps {
+export interface Volume extends VolumeProps {
   /**
    * Volume ID (same as name for Docker volumes)
    */
@@ -135,13 +135,13 @@ export const Volume = Resource(
       return this.destroy();
     } else {
       // Set default driver if not provided
-      props.driver = props.driver || "local";
+      const driver = props.driver || "local";
       const driverOpts = props.driverOpts || {};
 
       // Create the volume
       const volumeId = await api.createVolume(
         volumeName,
-        props.driver,
+        driver,
         driverOpts,
         processedLabels,
       );
@@ -150,16 +150,16 @@ export const Volume = Resource(
       const volumeInfos = await api.inspectVolume(volumeId);
       const mountpoint = volumeInfos[0].Mountpoint;
 
-      // Return the resource using this() to construct output
-      return this({
+      return {
         ...props,
+        driver: driver,
         id: volumeId,
         name: volumeName,
         mountpoint,
         createdAt: Date.now(),
         labels: Array.isArray(props.labels) ? props.labels : undefined,
         driverOpts: props.driverOpts,
-      });
+      };
     }
   },
 );

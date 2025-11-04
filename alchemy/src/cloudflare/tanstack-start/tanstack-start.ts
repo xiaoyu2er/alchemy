@@ -1,3 +1,5 @@
+import path from "pathe";
+import { exists } from "../../util/exists.ts";
 import type { Assets } from "../assets.ts";
 import type { Bindings } from "../bindings.ts";
 import { Vite, type ViteProps } from "../vite/vite.ts";
@@ -14,11 +16,28 @@ export async function TanStackStart<B extends Bindings>(
   id: string,
   props?: Partial<TanStackStartProps<B>>,
 ): Promise<TanStackStart<B>> {
+  const main =
+    props?.wrangler?.main ??
+    ((await exists(path.resolve(props?.cwd ?? process.cwd(), "src/server.ts")))
+      ? "src/server.ts"
+      : undefined);
   return await Vite(id, {
-    ...props,
+    entrypoint: "dist/server/index.js",
+    assets: "dist/client",
+    compatibility: "node",
     noBundle: true,
-    entrypoint: props?.entrypoint ?? ".output/server/index.mjs",
-    compatibilityFlags: ["nodejs_compat", ...(props?.compatibilityFlags ?? [])],
-    assets: props?.assets ?? ".output/public",
+    spa: false,
+    ...props,
+    wrangler: {
+      ...props?.wrangler,
+      main,
+      transform: async (spec) => {
+        const transformed = (await props?.wrangler?.transform?.(spec)) ?? spec;
+        if (!main) {
+          transformed.main = "@tanstack/react-start/server-entry";
+        }
+        return transformed;
+      },
+    },
   });
 }

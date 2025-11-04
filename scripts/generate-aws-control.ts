@@ -170,9 +170,7 @@ function generateResourceType(
     lines.push(`/** ${resourceType.Documentation} */`);
   }
 
-  lines.push(
-    `type ${resourceName} = Resource<"AWS::${resourceName}"> & ${resourceName}Props & {`,
-  );
+  lines.push(`type ${resourceName} = ${resourceName}Props & {`);
 
   // Track which properties we've already added from attributes
   const addedProperties = new Set<string>();
@@ -974,7 +972,9 @@ async function generateDocumentation(
 ): Promise<void> {
   console.log("Generating documentation...");
   console.log(
-    `Overwrite mode: ${overwrite ? "enabled" : "disabled (will skip existing files)"}`,
+    `Overwrite mode: ${
+      overwrite ? "enabled" : "disabled (will skip existing files)"
+    }`,
   );
   console.log(`Maximum concurrent tasks: ${MAX_CONCURRENT_TASKS}`);
 

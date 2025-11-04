@@ -1,6 +1,5 @@
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
-import { logger } from "../util/logger.ts";
 import { CloudflareApiError, handleApiError } from "./api-error.ts";
 import {
   createCloudflareApi,
@@ -96,9 +95,7 @@ export interface QueueConsumerProps extends CloudflareApiOptions {
 /**
  * Output returned after Queue Consumer creation/update
  */
-export interface QueueConsumer
-  extends Resource<"cloudflare::QueueConsumer">,
-    QueueConsumerProps {
+export interface QueueConsumer extends QueueConsumerProps {
   /**
    * Unique ID for the consumer
    */
@@ -162,7 +159,7 @@ export const QueueConsumer = Resource(
       typeof props.queue === "string" ? props.queue : props.queue.id;
 
     if (this.scope.local && props.dev) {
-      return this({
+      return {
         id: this.output?.id ?? "",
         queueId,
         queue: props.queue,
@@ -170,13 +167,12 @@ export const QueueConsumer = Resource(
         scriptName: props.scriptName,
         settings: props.settings,
         accountId: this.output?.accountId ?? "",
-      });
+      };
     }
 
     const api = await createCloudflareApi(props);
 
     if (this.phase === "delete") {
-      logger.log(`Deleting Queue Consumer for queue ${queueId}`);
       if (props.delete !== false && this.output?.id) {
         // Delete the consumer
         await deleteQueueConsumer(api, queueId, this.output.id);
@@ -231,7 +227,13 @@ export const QueueConsumer = Resource(
       );
     }
 
-    return this({
+    const deadLetterQueue = props.settings?.deadLetterQueue
+      ? typeof props.settings.deadLetterQueue === "string"
+        ? props.settings.deadLetterQueue
+        : props.settings.deadLetterQueue.name
+      : undefined;
+
+    return {
       id: consumerData.result.consumer_id,
       queueId,
       queue: props.queue,
@@ -244,12 +246,17 @@ export const QueueConsumer = Resource(
             maxRetries: consumerData.result.settings.max_retries,
             maxWaitTimeMs: consumerData.result.settings.max_wait_time_ms,
             retryDelay: consumerData.result.settings.retry_delay,
-            deadLetterQueue: consumerData.result.settings.dead_letter_queue,
+            deadLetterQueue,
           }
-        : undefined,
+        : props.settings
+          ? {
+              ...props.settings,
+              deadLetterQueue,
+            }
+          : undefined,
       createdOn: consumerData.result.created_on,
       accountId: api.accountId,
-    });
+    };
   },
 );
 
@@ -260,13 +267,13 @@ interface CloudflareQueueConsumerResponse {
   result: {
     consumer_id: string;
     script_name: string;
+    dead_letter_queue?: string;
     settings?: {
       batch_size?: number;
       max_concurrency?: number;
       max_retries?: number;
       max_wait_time_ms?: number;
       retry_delay?: number;
-      dead_letter_queue?: string;
     };
     type: "worker";
     queue_id?: string;
@@ -320,7 +327,7 @@ export async function createQueueConsumer(
         typeof props.settings.deadLetterQueue === "string"
           ? props.settings.deadLetterQueue
           : props.settings.deadLetterQueue.name;
-      createPayload.settings.dead_letter_queue = dlqName;
+      createPayload.dead_letter_queue = dlqName;
     }
   }
 
@@ -407,7 +414,7 @@ async function updateQueueConsumer(
         typeof props.settings.deadLetterQueue === "string"
           ? props.settings.deadLetterQueue
           : props.settings.deadLetterQueue.name;
-      updatePayload.settings.dead_letter_queue = dlqName;
+      updatePayload.dead_letter_queue = dlqName;
     }
   }
 
@@ -464,13 +471,13 @@ export async function listQueueConsumers(
       queue_id: string;
       queue_name: string;
       created_on: string;
+      dead_letter_queue?: string;
       settings?: {
         batch_size?: number;
         max_concurrency?: number;
         max_retries?: number;
         max_wait_time_ms?: number;
         retry_delay?: number;
-        dead_letter_queue?: string;
       };
     }>;
   };
@@ -494,7 +501,10 @@ export async function listQueueConsumers(
           maxRetries: consumer.settings.max_retries,
           maxWaitTimeMs: consumer.settings.max_wait_time_ms,
           retryDelay: consumer.settings.retry_delay,
-          deadLetterQueue: consumer.settings.dead_letter_queue,
+          deadLetterQueue:
+            consumer.dead_letter_queue && consumer.dead_letter_queue !== ""
+              ? consumer.dead_letter_queue
+              : undefined,
         }
       : undefined,
   }));
@@ -534,12 +544,12 @@ export async function listQueueConsumersForWorker(
   const data = (await response.json()) as {
     result: Array<{
       script: string;
+      dead_letter_queue?: string;
       settings?: {
         batch_size?: number;
         max_retries?: number;
         max_wait_time_ms?: number;
         retry_delay?: number;
-        dead_letter_queue?: string;
       };
       type: string;
       queue_name: string;
@@ -564,6 +574,13 @@ export async function listQueueConsumersForWorker(
     queueId: consumer.queue_id,
     consumerId: consumer.consumer_id,
     createdOn: consumer.created_on,
-    settings: consumer.settings,
+    settings: consumer.settings
+      ? {
+          ...consumer.settings,
+          deadLetterQueue: consumer.dead_letter_queue,
+        }
+      : consumer.dead_letter_queue
+        ? { deadLetterQueue: consumer.dead_letter_queue }
+        : undefined,
   }));
 }

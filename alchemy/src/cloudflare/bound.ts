@@ -1,27 +1,5 @@
-import type {
-  Ai,
-  AiGateway,
-  AnalyticsEngineDataset,
-  D1Database,
-  DispatchNamespace,
-  DurableObjectNamespace,
-  Fetcher,
-  Hyperdrive,
-  ImagesBinding,
-  KVNamespace,
-  Queue,
-  R2Bucket,
-  RateLimit,
-  Rpc,
-  SecretsStoreSecret,
-  Service,
-  VectorizeIndex,
-  WorkerVersionMetadata,
-  Workflow,
-} from "@cloudflare/workers-types";
 import type { Pipeline } from "cloudflare:pipelines";
 import type { Secret } from "../secret.ts";
-import type { AiGateway as _AiGateway } from "./ai-gateway.ts";
 import type { Ai as _Ai } from "./ai.ts";
 import type { AnalyticsEngineDataset as _AnalyticsEngineDataset } from "./analytics-engine.ts";
 import type { Assets } from "./assets.ts";
@@ -31,15 +9,18 @@ import type { R2Bucket as _R2Bucket } from "./bucket.ts";
 import type { Container as _Container } from "./container.ts";
 import type { D1Database as _D1Database } from "./d1-database.ts";
 import type { DurableObjectNamespace as _DurableObjectNamespace } from "./durable-object-namespace.ts";
+import type { HyperdriveRef } from "./hyperdrive-ref.ts";
 import type { Hyperdrive as _Hyperdrive } from "./hyperdrive.ts";
 import type { Images as _Images } from "./images.ts";
 import type { Pipeline as _Pipeline } from "./pipeline.ts";
 import type { Queue as _Queue } from "./queue.ts";
 import type { RateLimit as _RateLimit } from "./rate-limit.ts";
 import type { SecretKey } from "./secret-key.ts";
+import type { SecretRef as CloudflareSecretRef } from "./secret-ref.ts";
 import type { Secret as CloudflareSecret } from "./secret.ts";
 import type { VectorizeIndex as _VectorizeIndex } from "./vectorize-index.ts";
 import type { VersionMetadata as _VersionMetadata } from "./version-metadata.ts";
+import type { WorkerLoader as _WorkerLoader } from "./worker-loader.ts";
 import type { WorkerRef } from "./worker-ref.ts";
 import type { WorkerStub } from "./worker-stub.ts";
 import type { Worker as _Worker } from "./worker.ts";
@@ -56,27 +37,24 @@ type BoundWorker<
   >]: Rpc.Provider<RPC, "fetch" | "connect">[property];
 };
 
-export type Bound<T extends Binding> = T extends _DurableObjectNamespace<
-  infer O
->
-  ? DurableObjectNamespace<O & Rpc.DurableObjectBranded>
-  : T extends { type: "kv_namespace" }
-    ? KVNamespace
-    : T extends WorkerStub<infer RPC>
-      ? BoundWorker<RPC>
-      : T extends _Worker<any, infer RPC> | WorkerRef<infer RPC>
+export type Bound<T extends Binding> =
+  T extends _DurableObjectNamespace<infer O>
+    ? DurableObjectNamespace<O & Rpc.DurableObjectBranded>
+    : T extends { type: "kv_namespace" }
+      ? KVNamespace
+      : T extends WorkerStub<infer RPC>
         ? BoundWorker<RPC>
-        : T extends { type: "service" }
-          ? Service
-          : T extends _R2Bucket
-            ? R2Bucket
-            : T extends _AiGateway
-              ? AiGateway
-              : T extends _Hyperdrive
+        : T extends _Worker<any, infer RPC> | WorkerRef<infer RPC>
+          ? BoundWorker<RPC>
+          : T extends { type: "service" }
+            ? Service
+            : T extends _R2Bucket
+              ? R2Bucket
+              : T extends _Hyperdrive | HyperdriveRef
                 ? Hyperdrive
                 : T extends Secret
                   ? string
-                  : T extends CloudflareSecret
+                  : T extends CloudflareSecret | CloudflareSecretRef
                     ? SecretsStoreSecret
                     : T extends SecretKey
                       ? CryptoKey
@@ -88,35 +66,39 @@ export type Bound<T extends Binding> = T extends _DurableObjectNamespace<
                             ? D1Database
                             : T extends DispatchNamespace
                               ? DispatchNamespace
-                              : T extends _VectorizeIndex
-                                ? VectorizeIndex
-                                : T extends _Queue<infer Body>
-                                  ? Queue<Body>
-                                  : T extends _AnalyticsEngineDataset
-                                    ? AnalyticsEngineDataset
-                                    : T extends _Pipeline<infer R>
-                                      ? Pipeline<R>
-                                      : T extends _RateLimit
-                                        ? RateLimit
-                                        : T extends string
-                                          ? string
-                                          : T extends BrowserRendering
-                                            ? Fetcher
-                                            : T extends _Ai<infer M>
-                                              ? Ai<M>
-                                              : T extends _Images
-                                                ? ImagesBinding
-                                                : T extends _VersionMetadata
-                                                  ? WorkerVersionMetadata
-                                                  : T extends Self
-                                                    ? Service
-                                                    : T extends Json<infer T>
-                                                      ? T
-                                                      : T extends _Container<
-                                                            infer Obj
-                                                          >
-                                                        ? DurableObjectNamespace<
-                                                            Obj &
-                                                              Rpc.DurableObjectBranded
-                                                          >
-                                                        : Service;
+                              : T extends _WorkerLoader
+                                ? WorkerLoader
+                                : T extends _VectorizeIndex
+                                  ? VectorizeIndex
+                                  : T extends _Queue<infer Body>
+                                    ? Queue<Body>
+                                    : T extends _AnalyticsEngineDataset
+                                      ? AnalyticsEngineDataset
+                                      : T extends _Pipeline<infer R>
+                                        ? Pipeline<R>
+                                        : T extends _RateLimit
+                                          ? RateLimit
+                                          : T extends string
+                                            ? T
+                                            : T extends BrowserRendering
+                                              ? Fetcher
+                                              : T extends _Ai<infer M>
+                                                ? Ai<M>
+                                                : T extends _Images
+                                                  ? ImagesBinding
+                                                  : T extends _VersionMetadata
+                                                    ? WorkerVersionMetadata
+                                                    : T extends Self
+                                                      ? Service
+                                                      : T extends Json<infer T>
+                                                        ? T
+                                                        : T extends _Container<
+                                                              infer Obj
+                                                            >
+                                                          ? DurableObjectNamespace<
+                                                              Obj &
+                                                                Rpc.DurableObjectBranded
+                                                            >
+                                                          : T extends undefined
+                                                            ? undefined
+                                                            : Service;

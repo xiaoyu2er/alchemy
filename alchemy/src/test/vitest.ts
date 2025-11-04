@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "pathe";
 import { afterAll, beforeAll, it } from "vitest";
 import { alchemy } from "../alchemy.ts";
 import { Scope } from "../scope.ts";
@@ -8,7 +8,6 @@ import {
   FileSystemStateStore,
   SQLiteStateStore,
 } from "../state/index.ts";
-import { NoopTelemetryClient } from "../util/telemetry/client.ts";
 import type { TestOptions } from "./options.ts";
 
 /**
@@ -57,9 +56,9 @@ type test = {
    */
   skipIf(condition: boolean): test;
 
-  beforeAll(fn: (scope: Scope) => Promise<void>): void;
+  beforeAll(fn: (scope: Scope) => Promise<void>, timeout?: number): void;
 
-  afterAll(fn: (scope: Scope) => Promise<void>): void;
+  afterAll(fn: (scope: Scope) => Promise<void>, timeout?: number): void;
 
   /**
    * Current test scope
@@ -112,7 +111,10 @@ export function test(
         return new D1StateStore(scope);
       default:
         return new SQLiteStateStore(scope, {
-          filename: `.alchemy/${path.relative(process.cwd(), meta.filename)}.sqlite`,
+          filename: path.join(
+            scope.dotAlchemy,
+            `${path.relative(process.cwd(), meta.filename)}.sqlite`,
+          ),
         });
     }
   };
@@ -126,20 +128,23 @@ export function test(
 
   const scope = new Scope({
     parent: undefined,
-    scopeName: `${defaultOptions.prefix ? `${defaultOptions.prefix}-` : ""}${path.basename(meta.filename)}`,
+    scopeName: `${
+      defaultOptions.prefix ? `${defaultOptions.prefix}-` : ""
+    }${path.basename(meta.filename)}`,
     stateStore: defaultOptions?.stateStore,
     phase: "up",
-    telemetryClient: new NoopTelemetryClient(),
+    noTrack: true,
     quiet: defaultOptions.quiet,
     password: process.env.ALCHEMY_PASSWORD,
+    local: defaultOptions.local,
   });
 
-  test.beforeAll = (fn: (scope: Scope) => Promise<void>) => {
-    return beforeAll(() => scope.run(() => fn(scope)));
+  test.beforeAll = (fn: (scope: Scope) => Promise<void>, timeout?: number) => {
+    return beforeAll(() => scope.run(() => fn(scope)), timeout);
   };
 
-  test.afterAll = (fn: (scope: Scope) => Promise<void>) => {
-    return afterAll(() => scope.run(() => fn(scope)));
+  test.afterAll = (fn: (scope: Scope) => Promise<void>, timeout?: number) => {
+    return afterAll(() => scope.run(() => fn(scope)), timeout);
   };
 
   return test as test;

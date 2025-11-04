@@ -3,6 +3,7 @@ dist/
 lib/
 .out/
 .test/
+.DS_Store
 .env
 *.tsbuildinfo
 
@@ -18,8 +19,11 @@ wrangler.jsonc
 !.husky/pre-commit
 
 .smoke
+.smoke.logs
 smoke
 .svelte-kit
 .claude/*.local.json
 .astro
 .wrangler
+
+*.tgz

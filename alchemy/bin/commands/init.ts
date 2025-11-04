@@ -8,13 +8,26 @@ import {
   outro,
   select,
 } from "@clack/prompts";
-import * as fs from "fs-extra";
+import {
+  ensureDir,
+  ensureFile,
+  readFile,
+  writeFile,
+  writeJson,
+} from "fs-extra";
 import { parse as parseJsonc } from "jsonc-parse";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "pathe";
 import pc from "picocolors";
-import { IndentationText, Node, Project, QuoteKind } from "ts-morph";
+import {
+  IndentationText,
+  Node,
+  Project,
+  QuoteKind,
+  type CallExpression,
+} from "ts-morph";
 import z from "zod";
 import { detectPackageManager } from "../../src/util/detect-package-manager.ts";
+import { exists } from "../../src/util/exists.ts";
 import type { DependencyVersionMap } from "../constants.ts";
 import { throwWithContext } from "../errors.ts";
 import { addPackageDependencies } from "../services/dependencies.ts";
@@ -66,6 +79,8 @@ export const init = loggedProcedure
       console.error("Failed to initialize Alchemy:", _error);
       throw new ExitSignal(1);
     }
+    // TODO(sam): adding this seemed to stop the CLI from hanging after success (which happens sometimes, not clear why)
+    throw new ExitSignal(0);
   });
 
 function sanitizeProjectName(name: string): string {
@@ -81,7 +96,7 @@ function sanitizeProjectName(name: string): string {
 
 async function readJsonc(filePath: string): Promise<any> {
   try {
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await readFile(filePath, "utf-8");
     return parseJsonc(content);
   } catch (error) {
     throw new Error(`Failed to read or parse ${filePath}: ${error}`);
@@ -89,7 +104,7 @@ async function readJsonc(filePath: string): Promise<any> {
 }
 
 async function writeJsonWithSpaces(filePath: string, data: any): Promise<void> {
-  await fs.writeJson(filePath, data, { spaces: 2 });
+  await writeJson(filePath, data, { spaces: 2 });
 }
 
 async function safelyUpdateJson(
@@ -99,7 +114,7 @@ async function safelyUpdateJson(
 ): Promise<void> {
   try {
     let data = fallbackData;
-    if (await fs.pathExists(filePath)) {
+    if (await exists(filePath)) {
       data = await readJsonc(filePath);
     }
     updater(data);
@@ -115,7 +130,7 @@ async function createInitContext(options: {
 }): Promise<InitContext> {
   const cwd = resolve(process.cwd());
   const packageJsonPath = resolve(cwd, "package.json");
-  const hasPackageJson = await fs.pathExists(packageJsonPath);
+  const hasPackageJson = await exists(packageJsonPath);
 
   let projectName = "my-alchemy-app";
   if (hasPackageJson) {
@@ -127,7 +142,7 @@ async function createInitContext(options: {
     } catch (_error) {}
   }
 
-  const useTypeScript = await fs.pathExists(resolve(cwd, "tsconfig.json"));
+  const useTypeScript = await exists(resolve(cwd, "tsconfig.json"));
   const framework =
     options.framework ||
     (await detectFramework(cwd, hasPackageJson, options.yes));
@@ -146,11 +161,13 @@ async function createInitContext(options: {
 const FRAMEWORK_DETECTION_MAP: Record<string, TemplateType> = {
   rwsdk: "rwsdk",
   astro: "astro",
+  next: "nextjs",
   nuxt: "nuxt",
   "react-router": "react-router",
   "@sveltejs/kit": "sveltekit",
   "@tanstack/react-start": "tanstack-start",
   vite: "vite",
+  "@types/bun": "bun-spa",
 };
 
 async function detectFramework(
@@ -173,12 +190,14 @@ async function detectFramework(
     options: [
       { label: "TypeScript Worker", value: "typescript" },
       { label: "Vite", value: "vite" },
+      { label: "Bun SPA", value: "bun-spa" },
       { label: "Astro", value: "astro" },
       { label: "React Router", value: "react-router" },
       { label: "SvelteKit", value: "sveltekit" },
       { label: "TanStack Start", value: "tanstack-start" },
       { label: "Redwood SDK", value: "rwsdk" },
       { label: "Nuxt.js", value: "nuxt" },
+      { label: "Next.js", value: "nextjs" },
     ] as const,
     initialValue: detectedFramework,
   });
@@ -216,9 +235,13 @@ async function detectFrameworkFromPackageJson(
 
 async function checkExistingAlchemyFiles(context: InitContext): Promise<void> {
   const alchemyFiles = ["alchemy.run.ts", "alchemy.run.js"];
-  const existingFile = alchemyFiles.find((file) =>
-    fs.pathExistsSync(resolve(context.cwd, file)),
-  );
+  let existingFile: string | undefined;
+  for (const file of alchemyFiles) {
+    if (await exists(resolve(context.cwd, file))) {
+      existingFile = file;
+      break;
+    }
+  }
 
   if (existingFile) {
     const overwriteResult = await confirm({
@@ -234,18 +257,15 @@ async function checkExistingAlchemyFiles(context: InitContext): Promise<void> {
 }
 
 const ALCHEMY_RUN_TEMPLATES: Record<
-  TemplateType,
+  Exclude<TemplateType, "hono">,
   (context: InitContext) => string
 > = {
-  typescript: (context) => `/// <reference types="@types/node" />
-
-import alchemy from "alchemy";
+  typescript: (context) => `import alchemy from "alchemy";
 import { Worker } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Worker("worker", {
-  name: \`\${app.name}-\${app.stage}\`,
   entrypoint: "src/worker.ts",
 });
 
@@ -259,7 +279,6 @@ import { Vite } from "alchemy/cloudflare";
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Vite("${context.projectName}", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -275,15 +294,30 @@ console.log({
 await app.finalize();
 `,
 
-  astro: (context) => `/// <reference types="@types/node" />
+  "bun-spa": (context) => `import alchemy from "alchemy";
+import { BunSPA } from "alchemy/cloudflare";
 
-import alchemy from "alchemy";
+const app = await alchemy("${context.projectName}");
+
+export const bunsite = await BunSPA("website", {
+  frontend: "src/index.html", // adjust to match your HTML entrypoint(s)
+  entrypoint: "src/server.ts", // your backend API entrypoint
+});
+
+console.log({
+  url: bunsite.url,
+  apiUrl: bunsite.apiUrl,
+});
+
+await app.finalize();
+`,
+
+  astro: (context) => `import alchemy from "alchemy";
 import { Astro } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const worker = await Astro("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -298,15 +332,12 @@ console.log({
 await app.finalize();
 `,
 
-  "react-router": (context) => `/// <reference types="@types/node" />
-
-import alchemy from "alchemy";
+  "react-router": (context) => `import alchemy from "alchemy";
 import { ReactRouter } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const worker = await ReactRouter("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "build/server/index.js",
@@ -322,15 +353,12 @@ console.log({
 await app.finalize();
 `,
 
-  sveltekit: (context) => `/// <reference types="@types/node" />
-
-import alchemy from "alchemy";
+  sveltekit: (context) => `import alchemy from "alchemy";
 import { SvelteKit } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const worker = await SvelteKit("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -345,15 +373,12 @@ console.log({
 await app.finalize();
 `,
 
-  "tanstack-start": (context) => `/// <reference types="@types/node" />
-
-import alchemy from "alchemy";
+  "tanstack-start": (context) => `import alchemy from "alchemy";
 import { TanStackStart } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const worker = await TanStackStart("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -368,20 +393,16 @@ console.log({
 await app.finalize();
 `,
 
-  rwsdk: (context) => `/// <reference types="@types/node" />
-
-import alchemy from "alchemy";
+  rwsdk: (context) => `import alchemy from "alchemy";
 import { D1Database, DurableObjectNamespace, Redwood } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 const database = await D1Database("database", {
-  name: \`\${app.name}-\${app.stage}-db\`,
   migrationsDir: "migrations",
 });
 
 export const worker = await Redwood("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   bindings: {
     AUTH_SECRET_KEY: alchemy.secret(process.env.AUTH_SECRET_KEY),
     DB: database,
@@ -403,15 +424,27 @@ console.log({
 await app.finalize();
 `,
 
-  nuxt: (context) => `/// <reference types="@types/node" />
+  nextjs: (context) => `import alchemy from "alchemy";
+import { Nextjs } from "alchemy/cloudflare";
 
-import alchemy from "alchemy";
+const app = await alchemy("${context.projectName}");
+
+export const website = await Nextjs("website", {
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+`,
+
+  nuxt: (context) => `import alchemy from "alchemy";
 import { Nuxt } from "alchemy/cloudflare";
 
 const app = await alchemy("${context.projectName}");
 
 export const website = await Nuxt("website", {
-  name: \`\${app.name}-\${app.stage}-website\`,
   // replace if different from default:
   //
   // main: "./.output/server/index.mjs",
@@ -434,18 +467,21 @@ async function createAlchemyRunFile(context: InitContext): Promise<void> {
       ? "alchemy.run.ts"
       : "alchemy.run.js";
     const outputPath = resolve(context.cwd, outputFileName);
-    await fs.writeFile(outputPath, content, "utf-8");
+    await writeFile(outputPath, content, "utf-8");
   } catch (error) {
     throwWithContext(error, "Failed to create alchemy.run file");
   }
 }
 
 const FRAMEWORK_DEPENDENCIES: Record<TemplateType, DependencyVersionMap[]> = {
+  nextjs: ["alchemy", "@opennextjs/cloudflare", "sharp"],
+  hono: ["alchemy"],
   nuxt: ["alchemy", "nitro-cloudflare-dev"],
   sveltekit: ["alchemy", "@sveltejs/adapter-cloudflare"],
   typescript: ["alchemy"],
   vite: ["alchemy"],
-  astro: ["alchemy"],
+  "bun-spa": ["alchemy"],
+  astro: ["alchemy", "@astrojs/cloudflare"],
   "react-router": ["alchemy", "@cloudflare/vite-plugin"],
   "tanstack-start": ["alchemy"],
   rwsdk: ["alchemy"],
@@ -461,12 +497,13 @@ async function updatePackageJson(context: InitContext): Promise<void> {
   try {
     const devDependencies = FRAMEWORK_DEPENDENCIES[context.framework];
     await addPackageDependencies({
-      devDependencies,
+      devDependencies: [...devDependencies, "@cloudflare/workers-types"],
       projectDir: context.cwd,
     });
 
     const packageJsonPath = resolve(context.cwd, "package.json");
     await safelyUpdateJson(packageJsonPath, (packageJson) => {
+      packageJson.type = "module";
       if (!packageJson.scripts) {
         packageJson.scripts = {};
       }
@@ -486,24 +523,34 @@ async function updateGitignore(context: InitContext) {
   try {
     const gitignorePath = resolve(context.cwd, ".gitignore");
 
-    await fs.ensureFile(gitignorePath);
+    await ensureFile(gitignorePath);
 
     let gitignoreContent = "";
-    if (await fs.pathExists(gitignorePath)) {
-      gitignoreContent = await fs.readFile(gitignorePath, "utf-8");
+    if (await exists(gitignorePath)) {
+      gitignoreContent = await readFile(gitignorePath, "utf-8");
     }
 
     const lines = gitignoreContent.split("\n").map((line) => line.trim());
-    const hasAlchemy = lines.some(
-      (line) => line === ".alchemy" || line === ".alchemy/",
-    );
+    const hasDirectory = (dir: string) =>
+      lines.some((line) => line === dir || line === `${dir}/`);
 
-    if (!hasAlchemy) {
-      if (gitignoreContent && !gitignoreContent.endsWith("\n")) {
-        gitignoreContent += "\n";
-      }
-      await fs.appendFile(gitignorePath, ".alchemy\n", "utf-8");
+    if (!hasDirectory(".alchemy")) {
+      lines.push("# alchemy", ".alchemy", "");
     }
+
+    if (context.framework === "nextjs") {
+      if (!hasDirectory(".next")) {
+        lines.push("# next", ".next", "");
+      }
+      if (!hasDirectory(".open-next")) {
+        lines.push("# open-next", ".open-next", "");
+      }
+      if (!lines.some((line) => line === "wrangler.jsonc")) {
+        lines.push("# wrangler", "wrangler.jsonc", "");
+      }
+    }
+
+    await writeFile(gitignorePath, lines.join("\n"), "utf-8");
   } catch (error) {
     throwWithContext(error, "Failed to update .gitignore");
   }
@@ -558,18 +605,20 @@ async function updateProjectConfiguration(context: InitContext): Promise<{
   return {
     typescript: () => updateTypescriptProject(context),
     vite: () => updateViteProject(context),
+    "bun-spa": () => updateBunSpaProject(context),
     astro: () => updateAstroProject(context),
     "react-router": () => updateReactRouterProject(context),
     sveltekit: () => updateSvelteKitProject(context),
     "tanstack-start": () => updateTanStackStartProject(context),
     rwsdk: () => updateRwsdkProject(context),
     nuxt: () => updateNuxtProject(context),
+    nextjs: () => updateNextjsProject(context),
   }[context.framework]();
 }
 
 async function updateTypescriptProject(context: InitContext): Promise<void> {
   const tsConfigPath = resolve(context.cwd, "tsconfig.json");
-  if (await fs.pathExists(tsConfigPath)) {
+  if (await exists(tsConfigPath)) {
     await updateTsConfig(tsConfigPath, {
       include: ["alchemy.run.ts"],
     });
@@ -579,16 +628,41 @@ async function updateTypescriptProject(context: InitContext): Promise<void> {
 async function updateViteProject(_context: InitContext): Promise<void> {
   // const tsConfigPath = resolve(context.cwd, "tsconfig.json");
   // const tsConfigNodePath = resolve(context.cwd, "tsconfig.node.json");
-  // if (await fs.pathExists(tsConfigPath)) {
+  // if (await exists(tsConfigPath)) {
   //   await updateTsConfig(tsConfigPath, {
   //     exclude: ["alchemy.run.ts", "./types/env.d.ts"],
   //   });
   // }
-  // if ((await fs.pathExists(tsConfigNodePath)) || context.framework === "vite") {
+  // if ((await exists(tsConfigNodePath)) || context.framework === "vite") {
   //   await updateTsConfig(tsConfigNodePath, {
   //     include: ["alchemy.run.ts"],
   //   });
   // }
+}
+
+async function updateBunSpaProject(context: InitContext): Promise<void> {
+  // Validate bunfig.toml exists or create it
+  const bunfigPath = resolve(context.cwd, "bunfig.toml");
+  if (!(await exists(bunfigPath))) {
+    // Create bunfig.toml with required config
+    await writeFile(bunfigPath, `[serve.static]\nenv='BUN_PUBLIC_*'\n`);
+  } else {
+    // Validate bunfig.toml has required config
+    const bunfigContent = await readFile(bunfigPath, "utf8");
+    const hasBunPublicEnv =
+      bunfigContent.includes("env") &&
+      (bunfigContent.includes("BUN_PUBLIC_*") ||
+        bunfigContent.includes("PUBLIC_*"));
+
+    if (!hasBunPublicEnv) {
+      throw new Error(
+        "bunfig.toml must contain the following configuration:\n\n" +
+          "[serve.static]\n" +
+          "env='BUN_PUBLIC_*'\n\n" +
+          "This is required for Alchemy to work with Bun SPA.",
+      );
+    }
+  }
 }
 
 async function updateSvelteKitProject(context: InitContext): Promise<void> {
@@ -630,6 +704,96 @@ async function updateAstroProject(context: InitContext): Promise<void> {
   // });
 }
 
+async function updateNextjsProject(context: InitContext): Promise<void> {
+  const resolveFile = async (name: string) => {
+    const candidates = ["ts", "js", "cjs", "mjs"].map((ext) =>
+      resolve(context.cwd, `${name}.${ext}`),
+    );
+    const existenceChecks = await Promise.all(
+      candidates.map((candidate) => exists(candidate)),
+    );
+    const foundIdx = existenceChecks.findIndex((exists) => exists);
+    if (foundIdx !== -1) {
+      return { path: candidates[foundIdx], exists: true };
+    }
+    return { path: candidates[0], exists: false };
+  };
+
+  const nextConfig = await resolveFile("next.config");
+  const openNextConfig = await resolveFile("open-next.config");
+
+  if (nextConfig.exists) {
+    const fileContent = await readFile(nextConfig.path, "utf-8");
+    let updated = fileContent;
+    if (
+      !fileContent.includes(
+        "import { defineCloudflareConfig } from '@opennextjs/cloudflare'",
+      )
+    ) {
+      updated = `import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";\n${fileContent}`;
+    }
+    if (!fileContent.includes("initOpenNextCloudflareForDev()")) {
+      updated += "\ninitOpenNextCloudflareForDev();\n";
+    }
+    await writeFile(nextConfig.path, updated);
+  } else {
+    await writeFile(
+      nextConfig.path,
+      `import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+
+initOpenNextCloudflareForDev();
+`,
+    );
+  }
+
+  if (!openNextConfig.exists) {
+    await writeFile(
+      openNextConfig.path,
+      `import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+
+export default defineCloudflareConfig({
+  // Uncomment to enable R2 cache,
+  // It should be imported as:
+  // import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
+  // See https://opennext.js.org/cloudflare/caching for more details
+  // incrementalCache: r2IncrementalCache,
+});
+`,
+    );
+  }
+  await writeFile(
+    resolve(context.cwd, "./env.d.ts"),
+    `// Auto-generated Cloudflare binding types.
+// @see https://alchemy.run/concepts/bindings/#type-safe-bindings
+
+import type { website } from "./alchemy.run.ts";
+
+declare global {
+	type CloudflareEnv = typeof website.Env;
+}
+
+declare module "cloudflare:workers" {
+	namespace Cloudflare {
+		export interface Env extends CloudflareEnv {}
+	}
+}`,
+  );
+
+  const tsConfigPath = resolve(context.cwd, "tsconfig.json");
+  await updateTsConfig(tsConfigPath, {
+    compilerOptions: {
+      types: ["@cloudflare/workers-types", "./env.d.ts"],
+    },
+  });
+}
+
 async function updateReactRouterProject(context: InitContext): Promise<{
   main: string | undefined;
 }> {
@@ -639,17 +803,17 @@ async function updateReactRouterProject(context: InitContext): Promise<{
   const wranglerJsonPath = resolve(context.cwd, "wrangler.json");
   const envTsPath = resolve(workersDir, "env.ts");
 
-  await fs.ensureDir(workersDir);
+  await ensureDir(workersDir);
 
   let main: string | undefined;
-  if (await fs.pathExists(wranglerJsonCPath)) {
+  if (await exists(wranglerJsonCPath)) {
     const wranglerJsonC = await readJsonc(wranglerJsonCPath);
     main = wranglerJsonC.main;
-  } else if (await fs.pathExists(wranglerJsonPath)) {
+  } else if (await exists(wranglerJsonPath)) {
     const wranglerJson = await readJsonc(wranglerJsonPath);
     main = wranglerJson.main;
   } else {
-    await fs.writeFile(
+    await writeFile(
       resolve(workersDir, "app.ts"),
       `
       import { createRequestHandler } from "react-router";
@@ -679,7 +843,7 @@ export default {
     );
   }
 
-  await fs.writeFile(
+  await writeFile(
     envTsPath,
     `
     import type { website } from "../alchemy.run.ts";
@@ -717,7 +881,7 @@ declare module "cloudflare:workers" {
 
 async function updateViteConfig(context: InitContext): Promise<void> {
   const viteConfigPath = resolve(context.cwd, "vite.config.ts");
-  if (!(await fs.pathExists(viteConfigPath))) return;
+  if (!(await exists(viteConfigPath))) return;
 
   try {
     const project = new Project({
@@ -802,7 +966,7 @@ async function updateViteConfig(context: InitContext): Promise<void> {
 
 async function updateReactRouterConfigTS(context: InitContext): Promise<void> {
   const configPath = resolve(context.cwd, "react-router.config.ts");
-  if (!(await fs.pathExists(configPath))) return;
+  if (!(await exists(configPath))) return;
 
   try {
     const project = new Project({
@@ -885,7 +1049,7 @@ async function updateTanStackStartProject(context: InitContext): Promise<void> {
 
 async function updateSvelteConfig(context: InitContext): Promise<void> {
   const svelteConfigPath = resolve(context.cwd, "svelte.config.js");
-  if (!(await fs.pathExists(svelteConfigPath))) return;
+  if (!(await exists(svelteConfigPath))) return;
 
   try {
     const project = new Project({
@@ -959,7 +1123,7 @@ function updateAdapterInConfig(configObject: Node): void {
 
 async function updateEnvFile(context: InitContext): Promise<void> {
   const envPath = resolve(context.cwd, ".env");
-  await fs.ensureFile(envPath);
+  await ensureFile(envPath);
 
   const envVars = ["ALCHEMY_PASSWORD=change-me"];
   if (context.framework === "rwsdk") {
@@ -967,9 +1131,9 @@ async function updateEnvFile(context: InitContext): Promise<void> {
   }
 
   let envContent = "";
-  if (await fs.pathExists(envPath)) {
+  if (await exists(envPath)) {
     try {
-      envContent = await fs.readFile(envPath, "utf-8");
+      envContent = await readFile(envPath, "utf-8");
     } catch (error) {
       console.warn("Failed to read .env:", error);
     }
@@ -989,7 +1153,7 @@ async function updateEnvFile(context: InitContext): Promise<void> {
 
   if (needsUpdate) {
     try {
-      await fs.writeFile(envPath, envContent, "utf-8");
+      await writeFile(envPath, envContent, "utf-8");
     } catch (error) {
       console.warn("Failed to update .env:", error);
     }
@@ -998,7 +1162,7 @@ async function updateEnvFile(context: InitContext): Promise<void> {
 
 async function updateNuxtConfig(context: InitContext): Promise<void> {
   const nuxtConfigPath = resolve(context.cwd, "nuxt.config.ts");
-  if (!(await fs.pathExists(nuxtConfigPath))) return;
+  if (!(await exists(nuxtConfigPath))) return;
 
   try {
     const project = new Project({
@@ -1073,7 +1237,7 @@ async function updateNuxtConfig(context: InitContext): Promise<void> {
 
 async function updateAstroConfig(context: InitContext): Promise<void> {
   const astroConfigPath = resolve(context.cwd, "astro.config.mjs");
-  if (!(await fs.pathExists(astroConfigPath))) return;
+  if (!(await exists(astroConfigPath))) return;
 
   try {
     const project = new Project({
@@ -1131,7 +1295,7 @@ async function updateAstroConfig(context: InitContext): Promise<void> {
 
 async function updateTanStackViteConfig(context: InitContext): Promise<void> {
   const viteConfigPath = resolve(context.cwd, "vite.config.ts");
-  if (!(await fs.pathExists(viteConfigPath))) return;
+  if (!(await exists(viteConfigPath))) return;
 
   try {
     const project = new Project({
@@ -1159,14 +1323,40 @@ async function updateTanStackViteConfig(context: InitContext): Promise<void> {
     const exportAssignment = sourceFile.getExportAssignment(
       (d) => !d.isExportEquals(),
     );
-    if (!exportAssignment) return;
+    if (!exportAssignment) {
+      throw new Error("vite.config.ts does not contain a default export");
+    }
 
-    const defineConfigCall = exportAssignment.getExpression();
+    let defineConfigCall: CallExpression | undefined;
+    const exportExpression = exportAssignment.getExpression();
+
+    // Check if it's a direct defineConfig call
     if (
-      !Node.isCallExpression(defineConfigCall) ||
-      defineConfigCall.getExpression().getText() !== "defineConfig"
-    )
-      return;
+      Node.isCallExpression(exportExpression) &&
+      exportExpression.getExpression().getText() === "defineConfig"
+    ) {
+      defineConfigCall = exportExpression;
+    }
+    // Check if it's an alias (identifier) that references a defineConfig call
+    else if (Node.isIdentifier(exportExpression)) {
+      const variableName = exportExpression.getText();
+      const variableDeclaration =
+        sourceFile.getVariableDeclaration(variableName);
+
+      if (variableDeclaration) {
+        const initializer = variableDeclaration.getInitializer();
+        if (
+          Node.isCallExpression(initializer) &&
+          initializer.getExpression().getText() === "defineConfig"
+        ) {
+          defineConfigCall = initializer;
+        }
+      }
+    }
+
+    if (!defineConfigCall) {
+      throw new Error("vite.config.ts does not contain a defineConfig call");
+    }
 
     let configObject = defineConfigCall.getArguments()[0];
     if (!configObject) {
@@ -1174,62 +1364,16 @@ async function updateTanStackViteConfig(context: InitContext): Promise<void> {
     }
 
     if (Node.isObjectLiteralExpression(configObject)) {
-      // Add build configuration
-      if (!configObject.getProperty("build")) {
-        configObject.addPropertyAssignment({
-          name: "build",
-          initializer: `{
-    target: "esnext",
-    rollupOptions: {
-      external: ["node:async_hooks", "cloudflare:workers"],
-    },
-  }`,
-        });
-      }
-
       const pluginsProperty = configObject.getProperty("plugins");
       if (pluginsProperty && Node.isPropertyAssignment(pluginsProperty)) {
         const initializer = pluginsProperty.getInitializer();
         if (Node.isArrayLiteralExpression(initializer)) {
-          const hasShim = initializer
+          const hasAlchemyPlugin = initializer
             .getElements()
             .some((el) => el.getText().includes("alchemy"));
-          if (!hasShim) {
+          if (!hasAlchemyPlugin) {
             initializer.addElement("alchemy()");
           }
-
-          const tanstackElements = initializer
-            .getElements()
-            .filter((el) => el.getText().includes("tanstackStart"));
-
-          tanstackElements.forEach((element) => {
-            if (Node.isCallExpression(element)) {
-              const args = element.getArguments();
-              if (args.length === 0) {
-                element.addArgument(`{
-      target: "cloudflare-module",
-      customViteReactPlugin: true,
-    }`);
-              } else if (
-                args.length === 1 &&
-                Node.isObjectLiteralExpression(args[0])
-              ) {
-                const configObj = args[0];
-                if (!configObj.getProperty("target")) {
-                  configObj.addPropertyAssignment({
-                    name: "target",
-                    initializer: '"cloudflare-module"',
-                  });
-                }
-                if (!configObj.getProperty("customViteReactPlugin")) {
-                  configObj.addPropertyAssignment({
-                    name: "customViteReactPlugin",
-                    initializer: "true",
-                  });
-                }
-              }
-            }
-          });
         }
       }
     }

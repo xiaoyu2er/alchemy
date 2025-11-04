@@ -1,21 +1,25 @@
 import { execArgv } from "node:process";
+import path from "pathe";
 import { onExit } from "signal-exit";
 import { isReplacedSignal } from "./apply.ts";
 import { DestroyStrategy, destroy, isDestroyedSignal } from "./destroy.ts";
 import { env } from "./env.ts";
 import {
-	ResourceFQN,
-	ResourceID,
-	ResourceKind,
-	ResourceScope,
-	ResourceSeq,
-	type PendingResource,
+  ResourceFQN,
+  ResourceID,
+  ResourceKind,
+  ResourceScope,
+  ResourceSeq,
+  type PendingResource,
 } from "./resource.ts";
-import { DEFAULT_STAGE, Scope, type ProviderCredentials } from "./scope.ts";
+import { DEFAULT_STAGE, type ProviderCredentials, Scope } from "./scope.ts";
 import { secret } from "./secret.ts";
 import type { StateStoreType } from "./state.ts";
+import { cliArgs, parseOption } from "./util/cli-args.ts";
 import type { LoggerApi } from "./util/cli.ts";
-import { TelemetryClient } from "./util/telemetry/client.ts";
+import { logger } from "./util/logger.ts";
+import { ALCHEMY_ROOT } from "./util/root-dir.ts";
+import { createAndSendEvent } from "./util/telemetry.ts";
 
 /**
  * Type alias for semantic highlighting of `alchemy` as a type keyword
@@ -99,43 +103,61 @@ _alchemy.env = env;
 async function _alchemy(
   appName: string,
   options?: Omit<AlchemyOptions, "appName">,
-): Promise<Scope | string | never> {
-  const cliArgs = process.argv.slice(2);
-	const cliOptions = {
-		phase: cliArgs.includes("--destroy")
-			? "destroy"
-			: cliArgs.includes("--read")
-				? "read"
-				: "up",
-		local: cliArgs.includes("--local") || cliArgs.includes("--dev"),
-		watch: cliArgs.includes("--watch") || execArgv.includes("--watch"),
-		quiet: cliArgs.includes("--quiet"),
-		force: cliArgs.includes("--force"),
-		// Parse stage argument (--stage my-stage) functionally and inline as a property declaration
-		stage: (function parseStage() {
-			const i = cliArgs.indexOf("--stage");
-			return i !== -1 && i + 1 < cliArgs.length
-				? cliArgs[i + 1]
-				: process.env.STAGE;
-		})(),
-		// Parse cdp-manager-url argument (--cdp-manager-url http://localhost:1336) functionally and inline as a property declaration
-		cdpManagerUrl: (function parseCdpManagerUrl() {
-			const i = cliArgs.indexOf("--cdp-manager-url");
-			return i !== -1 && i + 1 < cliArgs.length ? cliArgs[i + 1] : undefined;
-		})(),
-		password: process.env.ALCHEMY_PASSWORD,
-		adopt: cliArgs.includes("--adopt"),
-	} satisfies Partial<AlchemyOptions>;
-	const mergedOptions = {
-		...cliOptions,
-		...options,
-	};
-	if (
-		mergedOptions.stateStore === undefined &&
-		process.env.CI &&
-		process.env.ALCHEMY_CI_STATE_STORE_CHECK !== "false"
-	) {
-		throw new Error(`You are running Alchemy in a CI environment with the default local state store. 
+): Promise<Scope> {
+  const startedAt = performance.now();
+  let firstAnalyticsPromise: Promise<void> | undefined;
+  if (!options?.noTrack) {
+    firstAnalyticsPromise = createAndSendEvent({
+      event: "alchemy.start",
+      duration: performance.now() - startedAt,
+    });
+  }
+
+  // user may select a specific app to auto-enable read mode for any other app
+  const app = parseOption("--app");
+
+  const cliOptions = {
+    phase:
+      app && app !== appName
+        ? "read"
+        : cliArgs.includes("--destroy")
+          ? "destroy"
+          : cliArgs.includes("--read")
+            ? "read"
+            : "up",
+
+    local: cliArgs.includes("--local") || cliArgs.includes("--dev"),
+    watch: cliArgs.includes("--watch") || execArgv.includes("--watch"),
+    quiet: cliArgs.includes("--quiet"),
+    force: cliArgs.includes("--force"),
+    tunnel: cliArgs.includes("--tunnel"),
+    // Parse stage argument (--stage my-stage) functionally and inline as a property declaration
+    stage: (function parseStage() {
+      const i = cliArgs.indexOf("--stage");
+      return i !== -1 && i + 1 < cliArgs.length
+        ? cliArgs[i + 1]
+        : process.env.STAGE;
+    })(),
+    // Parse cdp-manager-url argument (--cdp-manager-url http://localhost:1336) functionally and inline as a property declaration
+    cdpManagerUrl: (function parseCdpManagerUrl() {
+      const i = cliArgs.indexOf("--cdp-manager-url");
+      return i !== -1 && i + 1 < cliArgs.length ? cliArgs[i + 1] : undefined;
+    })(),
+    password: process.env.ALCHEMY_PASSWORD,
+    adopt: cliArgs.includes("--adopt"),
+    rootDir: path.resolve(parseOption("--root-dir", ALCHEMY_ROOT)),
+    profile: parseOption("--profile"),
+  } satisfies Partial<AlchemyOptions>;
+  const mergedOptions = {
+    ...cliOptions,
+    ...options,
+  };
+  if (
+    mergedOptions.stateStore === undefined &&
+    process.env.CI &&
+    process.env.ALCHEMY_CI_STATE_STORE_CHECK !== "false"
+  ) {
+    throw new Error(`You are running Alchemy in a CI environment with the default local state store.
 This can lead to orphaned infrastructure and is rarely what you want to do.
 
 Instead, you should choose a persistent state store:
@@ -148,21 +170,69 @@ If this is a mistake, you can disable this check by setting the ALCHEMY_CI_STATE
 `);
   }
 
+  const isRunningFromCLI = parseOption("--telemetry-ref")?.endsWith("cli");
+
+  if (app && options?.phase) {
+    throw new Error(
+      `Cannot hard-code phase to "${options?.phase}" when running with --app ${app}`,
+    );
+  }
+
+  if (
+    options?.phase === "up" &&
+    (cliArgs.includes("--destroy") || cliArgs.includes("--read"))
+  ) {
+    throw new Error(
+      `Cannot hard-code phase to "up" when running with --destroy or --read`,
+    );
+  }
+
+  if (
+    options?.phase === "destroy" &&
+    (cliArgs.includes("--read") || cliArgs.includes("--dev"))
+    // TODO(sam): this is missing running from CLI "up" phase (because that is default)
+  ) {
+    throw new Error(
+      `Cannot hard-code phase to "destroy" when running with --read or --dev`,
+    );
+  }
+
+  if (
+    isRunningFromCLI &&
+    options?.phase === "destroy" &&
+    !cliArgs.includes("--destroy")
+  ) {
+    throw new Error(
+      'The phase was hard-coded to "destroy", but alchemy is running from the CLI without the --destroy option.',
+    );
+  }
+
+  if (options?.phase === "read" && cliArgs.includes("--destroy")) {
+    throw new Error(
+      `Cannot hard-code phase to "read" when running with --destroy`,
+    );
+  }
+
+  if (
+    isRunningFromCLI &&
+    options?.phase === "read" &&
+    !cliArgs.includes("--read")
+  ) {
+    logger.warn(
+      'The phase was hard-coded to "read", but alchemy is running from the CLI without the --read option, this is likely a mistake.',
+    );
+  }
+
   const phase = mergedOptions?.phase ?? "up";
-  const telemetryClient =
-    mergedOptions?.parent?.telemetryClient ??
-    TelemetryClient.create({
-      phase,
-      enabled: mergedOptions?.telemetry ?? true,
-      quiet: mergedOptions?.quiet ?? false,
-    });
   const root = new Scope({
     ...mergedOptions,
     parent: undefined,
     scopeName: appName,
     phase,
     password: mergedOptions?.password ?? process.env.ALCHEMY_PASSWORD,
-    telemetryClient,
+    noTrack: mergedOptions?.noTrack ?? false,
+    isSelected: app === undefined ? undefined : app === appName,
+    startedAt,
   });
   onExit((code) => {
     root.cleanup().then(() => {
@@ -181,8 +251,20 @@ If this is a mistake, you can disable this check by setting the ALCHEMY_CI_STATE
   Scope.storage.enterWith(root);
   Scope.storage.enterWith(stage);
   if (mergedOptions?.phase === "destroy") {
-    await destroy(stage);
+    const err = await destroy(stage).catch((e) => e);
+    if (!options?.noTrack) {
+      await createAndSendEvent(
+        {
+          event: err instanceof Error ? "alchemy.error" : "alchemy.success",
+          duration: performance.now() - root.startedAt,
+        },
+        err instanceof Error ? err : undefined,
+      );
+    }
     return process.exit(0);
+  }
+  if (firstAnalyticsPromise) {
+    await firstAnalyticsPromise;
   }
   return root;
 }
@@ -218,6 +300,12 @@ export interface AlchemyOptions {
    * @default false
    */
   force?: boolean;
+  /**
+   * Whether to create a tunnel for supported resources.
+   *
+   * @default false
+   */
+  tunnel?: boolean;
   /**
    * Name to scope the resource state under (e.g. `.alchemy/{stage}/..`).
    *
@@ -260,12 +348,12 @@ export interface AlchemyOptions {
    */
   password?: string;
   /**
-   * Whether to send anonymous telemetry data to the Alchemy team.
+   * Whether to stop sending anonymous telemetry data to the Alchemy team.
    * You can also opt out by setting the `DO_NOT_TRACK` or `ALCHEMY_TELEMETRY_DISABLED` environment variables to a truthy value.
    *
-   * @default true
+   * @default false
    */
-  telemetry?: boolean;
+  noTrack?: boolean;
   /**
    * A custom logger instance to use for this scope.
    * If not provided, the default fallback logger will be used.
@@ -281,10 +369,24 @@ export interface AlchemyOptions {
    * A custom CDP manager URL to use for this scope.
    */
   cdpManagerUrl?: string;
-}
-
-export interface ScopeOptions extends AlchemyOptions {
-  enter: boolean;
+  /**
+   * The root directory of the project.
+   *
+   * @default process.cwd()
+   */
+  rootDir?: string;
+  /**
+   * The Alchemy profile to use for authoriziing requests.
+   */
+  profile?: string;
+  /**
+   * Whether this is the application that was selected with `--app`
+   *
+   * `true` if the application was selected with `--app`
+   * `false` if the application was not selected with `--app`
+   * `undefined` if the program was not run with `--app`
+   */
+  isSelected?: boolean;
 }
 
 export interface RunOptions extends AlchemyOptions, ProviderCredentials {
@@ -327,18 +429,11 @@ async function run<T>(
           RunOptions,
           (this: Scope, scope: Scope) => Promise<T>,
         ]);
-  const telemetryClient =
-    options?.parent?.telemetryClient ??
-    TelemetryClient.create({
-      phase: options?.phase ?? "up",
-      enabled: options?.telemetry ?? true,
-      quiet: options?.quiet ?? false,
-    });
   const _scope = new Scope({
     ...options,
     parent: options?.parent,
     scopeName: id,
-    telemetryClient,
+    noTrack: options?.noTrack ?? false,
   });
   let noop = options?.noop ?? false;
   try {

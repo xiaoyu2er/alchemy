@@ -1,7 +1,12 @@
-import path from "node:path";
+import path from "pathe";
 import { describe, expect } from "vitest";
 import { alchemy } from "../../src/alchemy.ts";
-import { Container, ContainerApplication } from "../../src/cloudflare/index.ts";
+import {
+  Container,
+  ContainerApplication,
+  createCloudflareApi,
+  getContainerApplicationByName,
+} from "../../src/cloudflare/index.ts";
 import { Worker } from "../../src/cloudflare/worker.ts";
 import { destroy } from "../../src/destroy.ts";
 import "../../src/test/vitest.ts";
@@ -11,7 +16,9 @@ const test = alchemy.test(import.meta, {
   prefix: BRANCH_PREFIX,
 });
 
-describe("Container Resource", () => {
+const api = await createCloudflareApi();
+
+describe.sequential("Container Resource", () => {
   test("create container", async (scope) => {
     try {
       const make = async (dockerfile?: string) =>
@@ -32,6 +39,7 @@ describe("Container Resource", () => {
                 dockerfile,
               },
               maxInstances: 1,
+              adopt: true,
             }),
           },
         });
@@ -40,6 +48,45 @@ describe("Container Resource", () => {
       await make();
       // update
       await make("Dockerfile.update");
+    } finally {
+      // delete
+      await destroy(scope);
+    }
+  });
+
+  test("max_instances is set on ContainerApplication", async (scope) => {
+    try {
+      const containerName = `container-test-max-instances${BRANCH_PREFIX}`;
+      const make = async (dockerfile?: string) =>
+        Worker(`container-test-worker-max-instances${BRANCH_PREFIX}`, {
+          name: `container-test-worker-max-instances${BRANCH_PREFIX}`,
+          adopt: true,
+          entrypoint: path.join(import.meta.dirname, "container-handler.ts"),
+          compatibilityFlags: ["nodejs_compat"],
+          compatibilityDate: "2025-06-24",
+          format: "esm",
+          bindings: {
+            MY_CONTAINER: await Container(containerName, {
+              className: "MyContainer",
+              name: containerName,
+              tag: "latest",
+              build: {
+                context: path.join(import.meta.dirname, "container"),
+                dockerfile,
+              },
+              maxInstances: 2,
+              adopt: true,
+            }),
+          },
+        });
+
+      // create
+      await make();
+      // update
+      await make("Dockerfile.update");
+
+      const app = await getContainerApplicationByName(api, containerName);
+      expect(app?.max_instances).toBe(2);
     } finally {
       // delete
       await destroy(scope);
@@ -94,6 +141,7 @@ describe("Container Resource", () => {
         build: {
           context: path.join(import.meta.dirname, "container"),
         },
+        adopt: true,
       },
     );
 

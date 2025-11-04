@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import path from "node:path";
+import path from "pathe";
 import type { Context } from "../context.ts";
 import { Resource } from "../resource.ts";
 import { ignore } from "../util/ignore.ts";
@@ -111,7 +111,7 @@ alchemy.folder = async (dir: string, props?: { recursive?: boolean }) => {
 /**
  * Base file resource type
  */
-export interface File extends Resource<"fs::File"> {
+export interface File {
   /**
    * Path to the file
    */
@@ -193,9 +193,9 @@ export const File = Resource(
 
     await fs.promises.writeFile(filePath, props.content);
 
-    return this({
+    return {
       path: filePath,
       content: props.content,
-    });
+    };
   },
 );

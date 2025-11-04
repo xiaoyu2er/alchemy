@@ -1,14 +1,12 @@
-/// <reference types="@types/node" />
-
 import alchemy from "alchemy";
 import { TanStackStart } from "alchemy/cloudflare";
 
 const app = await alchemy("{projectName}");
 
-export const worker = await TanStackStart("website");
+export const website = await TanStackStart("website");
 
 console.log({
-  url: worker.url,
+  url: website.url,
 });
 
 await app.finalize();

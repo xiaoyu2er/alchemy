@@ -1,16 +1,18 @@
 import assert from "node:assert";
 import fs from "node:fs/promises";
-import path from "node:path";
+import path from "pathe";
 import { Exec } from "../os/index.ts";
 import { Scope } from "../scope.ts";
-import { isSecret } from "../secret.ts";
 import { dedent } from "../util/dedent.ts";
 import { logger } from "../util/logger.ts";
 import { Assets } from "./assets.ts";
 import type { Bindings } from "./bindings.ts";
 import { DEFAULT_COMPATIBILITY_DATE } from "./compatibility-date.gen.ts";
 import { unionCompatibilityFlags } from "./compatibility-presets.ts";
-import { DEFAULT_PERSIST_PATH } from "./miniflare/paths.ts";
+import {
+  extractStringAndSecretBindings,
+  unencryptSecrets,
+} from "./util/filter-env-bindings.ts";
 import { type AssetsConfig, Worker, type WorkerProps } from "./worker.ts";
 import { WranglerJson, type WranglerJsonSpec } from "./wrangler.json.ts";
 
@@ -27,7 +29,7 @@ export interface WebsiteProps<B extends Bindings>
         /**
          * The command to run to build the site
          */
-        command: string;
+        command?: string;
         /**
          * Additional environment variables to set when running the build command
          */
@@ -67,7 +69,7 @@ export interface WebsiteProps<B extends Bindings>
         /**
          * The command to run to start the dev server
          */
-        command: string;
+        command?: string;
         /**
          * Additional environment variables to set when running the dev command
          */
@@ -226,14 +228,7 @@ export async function Website<B extends Bindings>(
   const env = {
     ...(process.env ?? {}),
     ...(props.env ?? {}),
-    ...Object.fromEntries(
-      Object.entries(props.bindings ?? {}).flatMap(([key, value]) => {
-        if (typeof value === "string" || (isSecret(value) && secrets)) {
-          return [[key, value]];
-        }
-        return [];
-      }),
-    ),
+    ...extractStringAndSecretBindings(props.bindings ?? {}, secrets),
   };
   const worker = {
     ...workerProps,
@@ -267,8 +262,6 @@ export async function Website<B extends Bindings>(
     await fs.writeFile(paths.entrypoint, content);
   }
 
-  await writeMiniflareSymlink(paths.cwd);
-
   await WranglerJson({
     path: path.relative(paths.cwd, paths.wrangler.path),
     worker,
@@ -285,7 +278,7 @@ export async function Website<B extends Bindings>(
 
   const scope = Scope.current;
 
-  if (build && !scope.local) {
+  if (build?.command && !scope.local) {
     await Exec(`${id}-build`, {
       cwd: path.relative(process.cwd(), paths.cwd),
       command: build.command,
@@ -293,15 +286,17 @@ export async function Website<B extends Bindings>(
         ...env,
         ...(typeof build === "object" ? build.env : {}),
         NODE_ENV: "production",
+        ALCHEMY_ROOT: Scope.current.rootDir,
       },
       memoize: typeof build === "object" ? build.memoize : undefined,
     });
   }
 
   let url: string | undefined;
-  if (dev && scope.local) {
+  const devCommand = typeof dev === "string" ? dev : dev?.command;
+  if (devCommand && scope.local) {
     url = await scope.spawn(name, {
-      cmd: typeof dev === "string" ? dev : dev.command,
+      cmd: devCommand,
       cwd: paths.cwd,
       extract: (line) => {
         const URL_REGEX =
@@ -314,23 +309,14 @@ export async function Website<B extends Bindings>(
         }
       },
       env: {
-        ...Object.fromEntries(
-          Object.entries(env ?? {}).flatMap(([key, value]) => {
-            if (isSecret(value)) {
-              return [[key, value.unencrypted]];
-            }
-            if (typeof value === "string") {
-              return [[key, value]];
-            }
-            return [];
-          }),
-        ),
+        ...unencryptSecrets(env ?? {}),
         ...(typeof dev === "object" ? dev.env : {}),
         FORCE_COLOR: "1",
         ...process.env,
         // NOTE: we must set this to ensure the user does not accidentally set `NODE_ENV=production`
         // which breaks `vite dev` (it won't, for example, re-write `process.env.TSS_APP_BASE` in the `.js` client side bundle)
         NODE_ENV: "development",
+        ALCHEMY_ROOT: Scope.current.rootDir,
       },
     });
   }
@@ -341,7 +327,7 @@ export async function Website<B extends Bindings>(
       ...worker.bindings,
       ...(!scope.local
         ? {
-            ASSETS: await Assets("assets", {
+            ASSETS: await Assets({
               path: path.relative(process.cwd(), paths.assets),
             }),
           }
@@ -351,19 +337,28 @@ export async function Website<B extends Bindings>(
   })) as Website<B>;
 }
 
-async function writeMiniflareSymlink(cwd: string) {
-  const target = path.resolve(DEFAULT_PERSIST_PATH);
-  await fs.mkdir(target, { recursive: true });
-
-  if (cwd === process.cwd()) {
-    return;
+export const spreadBuildProps = (
+  props: { build?: WebsiteProps<Bindings>["build"] } | undefined,
+  defaultCommand: string,
+): WebsiteProps<Bindings>["build"] => {
+  if (typeof props?.build === "object") {
+    return {
+      ...props.build,
+      command: props.build.command ?? defaultCommand,
+    };
   }
+  return props?.build ?? defaultCommand;
+};
 
-  const persistPath = path.resolve(cwd, DEFAULT_PERSIST_PATH);
-  await fs.mkdir(path.dirname(persistPath), { recursive: true });
-  await fs.symlink(target, persistPath).catch((e) => {
-    if (e.code !== "EEXIST") {
-      throw e;
-    }
-  });
-}
+export const spreadDevProps = (
+  props: { dev?: WebsiteProps<Bindings>["dev"] } | undefined,
+  defaultCommand: string,
+): Exclude<WebsiteProps<Bindings>["dev"], undefined> => {
+  if (typeof props?.dev === "object") {
+    return {
+      ...props.dev,
+      command: props.dev.command ?? defaultCommand,
+    };
+  }
+  return props?.dev ?? defaultCommand;
+};

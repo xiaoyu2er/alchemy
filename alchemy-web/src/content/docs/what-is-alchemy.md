@@ -102,7 +102,7 @@ By default, Alchemy tracks what it creates in `.alchemy/` directory:
       api.json
 ```
 
-You can also use a remote state store like Durable Objects, R2, S3, etc. See [State](../concepts/state) for more information.
+You can also use a remote state store like Durable Objects, R2, S3, etc. See [State](/concepts/state/) for more information.
 
 
 ## Phases
@@ -277,10 +277,10 @@ export const MyResource = Resource(
       return this.destroy();
     } else if (this.phase === "update") {
       // Update logic
-      return this({ ...props, id: this.output.id });
+      return { ...props, id: this.output.id };
     } else {
       // Create logic
-      return this({ ...props, id: "new-id" });
+      return { ...props, id: "new-id" };
     }
   }
 );

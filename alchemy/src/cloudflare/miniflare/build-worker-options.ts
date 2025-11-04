@@ -1,13 +1,14 @@
 import * as miniflare from "miniflare";
+import path from "pathe";
 import { assertNever } from "../../util/assert-never.ts";
 import type { HTTPServer } from "../../util/http.ts";
+import { logger } from "../../util/logger.ts";
 import type { CloudflareApi } from "../api.ts";
-import {
-  Self,
-  type Binding,
-  type Bindings,
-  type WorkerBindingService,
-  type WorkerBindingSpec,
+import type {
+  Binding,
+  Bindings,
+  WorkerBindingService,
+  WorkerBindingSpec,
 } from "../bindings.ts";
 import { isQueueEventSource, type EventSource } from "../event-source.ts";
 import type { WorkerBundle, WorkerBundleSource } from "../worker-bundle.ts";
@@ -25,11 +26,12 @@ export interface MiniflareWorkerInput {
   assets: AssetsConfig | undefined;
   bundle: WorkerBundleSource;
   port: number | undefined;
+  tunnel: boolean | undefined;
+  cwd: string;
 }
 
 type RemoteOnlyBindingType =
   | "ai"
-  | "ai_gateway"
   | "browser"
   | "dispatch_namespace"
   | "mtls_certificate"
@@ -53,7 +55,9 @@ type RemoteBinding =
   | WorkerBindingService;
 
 type BaseWorkerOptions = {
-  [K in keyof miniflare.WorkerOptions]: K extends "compatibilityFlags"
+  [K in keyof miniflare.WorkerOptions]: K extends
+    | "compatibilityFlags"
+    | "routes"
     ? miniflare.WorkerOptions[K]
     : Exclude<miniflare.WorkerOptions[K], string[]>;
 };
@@ -71,11 +75,9 @@ export const buildWorkerOptions = async (
     compatibilityFlags: input.compatibilityFlags,
     unsafeDirectSockets: [
       // This matches the Wrangler configuration by exposing the default handler (e.g. `export default { fetch }`).
-      // However, unlike Wrangler, we set `proxy: false` to avoid the following error when connecting via a websocket:
-      // workerd/io/worker.c++:2164: info: uncaught exception; source = Uncaught (in promise); stack = TypeError: Invalid URL string.
       {
         entrypoint: "default",
-        proxy: false,
+        proxy: true,
       },
     ],
     unsafeInspectorProxy: true,
@@ -87,19 +89,26 @@ export const buildWorkerOptions = async (
             : "unix:///var/run/docker.sock",
       },
     },
+    // This exposes the worker as a route that can be accessed by setting the MF-Route-Override header.
+    routes: [input.name],
   };
   for (const [key, binding] of Object.entries(input.bindings ?? {})) {
     if (typeof binding === "string") {
       (options.bindings ??= {})[key] = binding;
       continue;
     }
-    if (binding === Self) {
+    if (binding.type === "cloudflare::Worker::Self") {
       (options.serviceBindings ??= {})[key] = miniflare.kCurrentWorker;
       continue;
     }
     switch (binding.type) {
-      case "ai":
-      case "ai_gateway": {
+      case "ai": {
+        const existing = remoteBindings.find((b) => b.type === "ai");
+        if (existing) {
+          throw new Error(
+            `Workers cannot have multiple AI bindings. Binding "${key}" conflicts with "${existing.name}".`,
+          );
+        }
         remoteBindings.push({
           type: "ai",
           name: key,
@@ -116,7 +125,7 @@ export const buildWorkerOptions = async (
       case "assets": {
         options.assets = {
           binding: key,
-          directory: binding.path,
+          directory: path.resolve(input.cwd, binding.path),
           assetConfig: {
             html_handling: input.assets?.html_handling,
             not_found_handling: input.assets?.not_found_handling,
@@ -139,6 +148,11 @@ export const buildWorkerOptions = async (
           useSQLite: binding.sqlite,
           container: {
             imageName: binding.image.imageRef,
+          },
+        };
+        options.containerEngine = {
+          localDocker: {
+            socketPath: await getDockerSocketPath(),
           },
         };
         break;
@@ -181,7 +195,9 @@ export const buildWorkerOptions = async (
         break;
       }
       case "hyperdrive": {
-        (options.hyperdrives ??= {})[key] = binding.dev.origin.unencrypted;
+        if (binding.dev) {
+          (options.hyperdrives ??= {})[key] = binding.dev.origin.unencrypted;
+        }
         break;
       }
       case "images": {
@@ -263,6 +279,10 @@ export const buildWorkerOptions = async (
             type: "r2_bucket",
             name: key,
             bucket_name: binding.name,
+            jurisdiction:
+              binding.jurisdiction === "default"
+                ? undefined
+                : binding.jurisdiction,
             raw: true,
           });
         } else {
@@ -303,6 +323,10 @@ export const buildWorkerOptions = async (
         };
         break;
       }
+      case "worker_loader": {
+        (options.workerLoaders ??= {})[key] = {};
+        break;
+      }
       case "workflow": {
         (options.workflows ??= {})[key] = {
           name: binding.workflowName,
@@ -324,11 +348,15 @@ export const buildWorkerOptions = async (
       );
     }
     if (isQueueEventSource(eventSource)) {
+      const dlq = eventSource.settings?.deadLetterQueue;
       (options.queueConsumers ??= {})[queue.name] = {
         maxBatchSize: eventSource.settings?.batchSize,
-        maxBatchTimeout: eventSource.settings?.maxWaitTimeMs,
+        maxBatchTimeout: eventSource.settings?.maxWaitTimeMs
+          ? eventSource.settings?.maxWaitTimeMs / 1000
+          : undefined,
         maxRetries: eventSource.settings?.maxRetries,
         retryDelay: eventSource.settings?.retryDelay,
+        deadLetterQueue: typeof dlq === "string" ? dlq : dlq?.name,
       };
     } else {
       (options.queueConsumers ??= {})[eventSource.name] = {};
@@ -460,7 +488,10 @@ const normalizeBundle = (bundle: WorkerBundle) => {
 };
 
 const isRemoteBinding = (binding: Binding) => {
-  if (typeof binding === "string" || binding === Self) {
+  if (
+    typeof binding === "string" ||
+    binding.type === "cloudflare::Worker::Self"
+  ) {
     return false;
   }
   return (
@@ -470,3 +501,33 @@ const isRemoteBinding = (binding: Binding) => {
     !!binding.dev.remote
   );
 };
+
+/**
+ * DOCKER_HOST env is standardized
+ * docker has an option to expose on tcp://localhost:2375; so we check 2375 if the user has it enabled
+ * the pipe on windows doesn't work half the time(even though the pipe exists). This seems like a strange error on how miniflare parses the pipe
+ * @returns The Docker path
+ */
+async function getDockerSocketPath() {
+  if (process.env.DOCKER_HOST) {
+    return process.env.DOCKER_HOST;
+  }
+  // Check if docker is running on tcp://localhost:2375 using fetch
+  try {
+    const url = "http://localhost:2375/_ping";
+    const res = await fetch(url, { method: "GET" });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.trim() === "OK") {
+        return "localhost:2375";
+      }
+    }
+  } catch {}
+  if (process.platform === "win32") {
+    logger.warn(
+      "Using the pipe on Windows is unstable. If you have issues, try setting DOCKER_HOST or enabling 'Expose daemon on tcp://localhost:2375 without TLS' in docker desktop",
+    );
+    return "//./pipe/docker_engine";
+  }
+  return "unix:///var/run/docker.sock";
+}

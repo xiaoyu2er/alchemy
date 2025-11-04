@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import path from "node:path";
+import path from "pathe";
 import { AsyncMutex } from "./mutex.ts";
 
 export interface IdempotentSpawnOptions {
@@ -112,7 +112,7 @@ export async function idempotentSpawn({
     const child = spawn(cmd, {
       shell: true,
       cwd,
-      stdio: ["ignore", out.fd, out.fd], // stdout/stderr -> files (OS-level)
+      stdio: ["inherit", out.fd, out.fd], // stdout/stderr -> files (OS-level)
       env,
       detached: false,
     });
@@ -158,11 +158,7 @@ export async function idempotentSpawn({
   // Follow a file from persisted offset and mirror to a sink (stdout/stderr)
   async function followFilePersisted(
     logPath: string,
-    {
-      write,
-      chunkSize = 64 * 1024,
-      // tickMs = 100,
-    }: {
+    { write, chunkSize = 64 * 1024, tickMs = 100 }: {
       stateKey: string;
       write: (buf: Buffer) => boolean;
       chunkSize?: number;
@@ -229,15 +225,14 @@ export async function idempotentSpawn({
       await drain();
     });
 
-    // TODO(sam): do we need this?
-    // const tick = setInterval(() => {
-    //   drain().catch(() => {});
-    // }, tickMs);
+    const tick = setInterval(() => {
+      drain().catch(() => {});
+    }, tickMs);
 
     return async function stop() {
       closed = true;
       watcher.close();
-      // clearInterval(tick);
+      clearInterval(tick);
       await fh.close().catch(() => {});
       await persist();
     };

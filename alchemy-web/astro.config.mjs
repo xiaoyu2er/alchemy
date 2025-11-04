@@ -1,26 +1,21 @@
 // @ts-check
 import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
+import tailwindcss from "@tailwindcss/vite";
+import icon from "astro-icon";
 import { defineConfig } from "astro/config";
 import starlightBlog from "starlight-blog";
-// import theme from "starlight-nextjs-theme";
-// import theme from 'starlight-theme-flexoki';
-// import theme from 'starlight-theme-rapide';
-// import theme from 'starlight-theme-obsidian';
+import starlightLinksValidator from "starlight-links-validator";
 import theme from "starlight-theme-nova";
-//@ts-expect-error
-import postHogScript from "./src/scripts/posthog.js?raw";
 
-// import { ion as theme } from "starlight-ion-theme";
+// @ts-expect-error
+import postHogScript from "./src/scripts/posthog.js?raw";
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://alchemy.run",
-  // only needed if we use SSR
-  // adapter: cloudflare({
-  //   imageService: "passthrough",
-  // }),
   prefetch: true,
+  trailingSlash: "ignore",
   integrations: [
     sitemap({
       filter: (page) =>
@@ -28,9 +23,6 @@ export default defineConfig({
         !page.endsWith(".md") &&
         !page.endsWith(".mdx"),
     }),
-    // expressiveCode({
-    //   themes: [{}]
-    // }),
     starlight({
       title: "Alchemy",
       favicon: "/potion.png",
@@ -56,19 +48,19 @@ export default defineConfig({
         dark: "./public/alchemy-logo-dark.svg",
         replacesTitle: true,
       },
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/global.css", "./src/styles/custom.css"],
       prerender: true,
       routeMiddleware: "./src/routeData.ts",
       social: [
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/sam-goodwin/alchemy",
+          href: "https://github.com/alchemy-run/alchemy",
         },
         {
-          icon: "twitter",
+          icon: "x.com",
           label: "X",
-          href: "https://twitter.com/samgoodwin89",
+          href: "https://x.com/alchemy_run",
         },
         {
           icon: "discord",
@@ -77,11 +69,13 @@ export default defineConfig({
         },
       ],
       editLink: {
-        baseUrl: "https://github.com/sam-goodwin/alchemy/edit/main/alchemy-web",
+        baseUrl: "https://github.com/alchemy-run/alchemy/edit/main/alchemy-web",
       },
       components: {
         Hero: "./src/components/Hero.astro",
+        Head: "./src/components/Head.astro",
         MarkdownContent: "./src/components/MarkdownContent.astro",
+        PageTitle: "./src/components/docs/PageTitle.astro",
       },
       sidebar: [
         {
@@ -107,11 +101,7 @@ export default defineConfig({
         },
       ],
       expressiveCode: {
-        themes: [
-          // "github-light-high-contrast",
-          "github-light",
-          "github-dark-dimmed",
-        ],
+        themes: ["github-light", "github-dark-dimmed"],
       },
       plugins: [
         theme({
@@ -127,8 +117,13 @@ export default defineConfig({
           ],
         }),
         starlightBlog(),
+        starlightLinksValidator(),
       ],
     }),
+    icon(),
   ],
-  trailingSlash: "ignore",
+
+  vite: {
+    plugins: [tailwindcss()],
+  },
 });
