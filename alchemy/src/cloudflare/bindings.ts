@@ -5,6 +5,7 @@
  */
 import type { Secret } from "../secret.ts";
 import type { Ai } from "./ai.ts";
+import type { Inherit } from "./inherit.ts";
 import type { AnalyticsEngineDataset } from "./analytics-engine.ts";
 import type { Assets } from "./assets.ts";
 import type { Bound } from "./bound.ts";
@@ -58,6 +59,7 @@ export type Binding =
   | Hyperdrive
   | HyperdriveRef
   | Images
+  | Inherit
   | KVNamespace
   | Pipeline
   | Queue
@@ -122,6 +124,7 @@ export type WorkerBindingSpec =
   | WorkerBindingDurableObjectNamespace
   | WorkerBindingHyperdrive
   | WorkerBindingImages
+  | WorkerBindingInherit
   | WorkerBindingJson
   | WorkerBindingKVNamespace
   | WorkerBindingMTLSCertificate
@@ -151,6 +154,20 @@ export interface WorkerBindingAI {
   name: string;
   /** Type identifier for AI binding */
   type: "ai";
+}
+
+/**
+ * AI binding type
+ */
+export interface WorkerBindingInherit {
+  /** Type identifier for Inherit binding */
+  type: "inherit";
+  /** The name of the binding */
+  name: string;
+  /** The old name of the binding */
+  old_name: string | undefined;
+  /** The version ID of the binding */
+  version_id: string | undefined;
 }
 
 /**

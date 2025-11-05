@@ -39,6 +39,7 @@ export * from "./health-check.ts";
 export * from "./hyperdrive-ref.ts";
 export * from "./hyperdrive.ts";
 export * from "./images.ts";
+export * from "./inherit.ts";
 export * from "./kv-namespace.ts";
 export * from "./logpush-job.ts";
 export * from "./next.ts";

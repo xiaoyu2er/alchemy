@@ -562,6 +562,13 @@ export async function prepareWorkerMetadata(
         type: "images",
         name: bindingName,
       });
+    } else if (binding.type === "inherit") {
+      meta.bindings.push({
+        type: "inherit",
+        name: bindingName,
+        old_name: binding.old_name,
+        version_id: binding.version_id,
+      });
     } else if (binding.type === "version_metadata") {
       meta.bindings.push({
         type: "version_metadata",

@@ -12,6 +12,7 @@ import type { DurableObjectNamespace as _DurableObjectNamespace } from "./durabl
 import type { HyperdriveRef } from "./hyperdrive-ref.ts";
 import type { Hyperdrive as _Hyperdrive } from "./hyperdrive.ts";
 import type { Images as _Images } from "./images.ts";
+import type { Inherit as _Inherit } from "./inherit.ts";
 import type { Pipeline as _Pipeline } from "./pipeline.ts";
 import type { Queue as _Queue } from "./queue.ts";
 import type { RateLimit as _RateLimit } from "./rate-limit.ts";
@@ -86,19 +87,23 @@ export type Bound<T extends Binding> =
                                                 ? Ai<M>
                                                 : T extends _Images
                                                   ? ImagesBinding
-                                                  : T extends _VersionMetadata
-                                                    ? WorkerVersionMetadata
-                                                    : T extends Self
-                                                      ? Service
-                                                      : T extends Json<infer T>
-                                                        ? T
-                                                        : T extends _Container<
-                                                              infer Obj
+                                                  : T extends _Inherit
+                                                    ? unknown
+                                                    : T extends _VersionMetadata
+                                                      ? WorkerVersionMetadata
+                                                      : T extends Self
+                                                        ? Service
+                                                        : T extends Json<
+                                                              infer T
                                                             >
-                                                          ? DurableObjectNamespace<
-                                                              Obj &
-                                                                Rpc.DurableObjectBranded
-                                                            >
-                                                          : T extends undefined
-                                                            ? undefined
-                                                            : Service;
+                                                          ? T
+                                                          : T extends _Container<
+                                                                infer Obj
+                                                              >
+                                                            ? DurableObjectNamespace<
+                                                                Obj &
+                                                                  Rpc.DurableObjectBranded
+                                                              >
+                                                            : T extends undefined
+                                                              ? undefined
+                                                              : Service;
