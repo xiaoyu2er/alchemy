@@ -205,6 +205,10 @@ export const buildWorkerOptions = async (
         }
         break;
       }
+      case "inherit": {
+        logger.warn("unable to inherit bindings in development mode");
+        break;
+      }
       case "kv_namespace": {
         if (isRemoteBinding(binding)) {
           remoteBindings.push({

@@ -445,6 +445,8 @@ async function processBindings(
         // https://developers.cloudflare.com/workers/development-testing/#recommended-remote-bindings
         remote: true,
       };
+    } else if (binding.type === "inherit") {
+      spec.keep_vars = true;
     } else if (binding.type === "analytics_engine") {
       analyticsEngineDatasets.push({
         binding: bindingName,
