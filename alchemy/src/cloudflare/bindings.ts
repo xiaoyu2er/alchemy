@@ -26,10 +26,11 @@ import type { SecretRef as CloudflareSecretRef } from "./secret-ref.ts";
 import type { Secret as CloudflareSecret } from "./secret.ts";
 import type { VectorizeIndex } from "./vectorize-index.ts";
 import type { VersionMetadata } from "./version-metadata.ts";
+import type { VpcService } from "./vpc-service.ts";
+import type { WorkerLoader } from "./worker-loader.ts";
 import type { WorkerRef } from "./worker-ref.ts";
 import type { WorkerStub } from "./worker-stub.ts";
 import type { Worker } from "./worker.ts";
-import type { WorkerLoader } from "./worker-loader.ts";
 import type { Workflow } from "./workflow.ts";
 
 export type Bindings = {
@@ -80,7 +81,8 @@ export type Binding =
   | BrowserRendering
   | VersionMetadata
   | Self
-  | Json;
+  | Json
+  | VpcService;
 
 export type Self<
   RPC extends Rpc.WorkerEntrypointBranded = Rpc.WorkerEntrypointBranded,
@@ -141,7 +143,8 @@ export type WorkerBindingSpec =
   | WorkerBindingVersionMetadata
   | WorkerBindingWasmModule
   | WorkerBindingWorkerLoader
-  | WorkerBindingWorkflow;
+  | WorkerBindingWorkflow
+  | WorkerBindingVpcService;
 
 /**
  * AI binding type
@@ -495,6 +498,16 @@ export interface WorkerBindingWorkflow {
    * @default - the name of the script it is bound to
    */
   script_name?: string;
+}
+
+export interface WorkerBindingVpcService {
+  /** The name of the binding */
+  name: string;
+  /** Type identifier for VPC Service binding */
+  type: "vpc_service";
+  /** VPC Service name */
+  service_name: string;
+  service_id: string;
 }
 
 /**
