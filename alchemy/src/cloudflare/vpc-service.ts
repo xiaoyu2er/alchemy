@@ -10,40 +10,90 @@ import {
 import type { Tunnel } from "./tunnel.ts";
 
 export interface VpcServiceProps extends CloudflareApiOptions {
+  /**
+   * The name of the VPC service to create.
+   *
+   * @default ${app}-${stage}-${id}
+   */
   name?: string;
+  /**
+   * The type of the VPC service. Currently only "http" is supported, but tcp will be supported in the future.
+   *
+   * @default "http"
+   */
+  serviceType?: "http";
+  /**
+   * The TCP port for the VPC service.
+   */
   tcpPort?: number;
+  /**
+   * The application protocol for the VPC service.
+   */
   appProtocol?: string;
+  /**
+   * The HTTP port for the VPC service.
+   *
+   * @default 80
+   */
   httpPort?: number;
+  /**
+   * The HTTPS port for the VPC service.
+   *
+   * @default 443
+   */
   httpsPort?: number;
+  /**
+   * The host for the VPC service.
+   */
   host:
     | VpcService.IPv4Host
     | VpcService.IPv6Host
     | VpcService.DualStackHost
     | VpcService.HostnameHost;
+  /**
+   * Whether to adopt the VPC service if it already exists.
+   *
+   * @default false
+   */
   adopt?: boolean;
 }
 
 export declare namespace VpcService {
   export type Host = IPv4Host | IPv6Host | DualStackHost | HostnameHost;
 
+  /**
+   * Represents a VPC service that is accessible via an IPv4 address.
+   */
   export interface IPv4Host {
     ipv4: string;
     network: Network;
   }
 
+  /**
+   * Represents a VPC service that is accessible via an IPv6 address.
+   */
   export interface IPv6Host {
     ipv6: string;
     network: Network;
   }
 
+  /**
+   * Represents a VPC service that is accessible via both IPv4 and IPv6 addresses.
+   */
   export interface DualStackHost {
     ipv4: string;
     ipv6: string;
     network: Network;
   }
 
+  /**
+   * Represents a network that the VPC service is accessible via. This can be a tunnel ID or a `Tunnel` resource.
+   */
   export type Network = { tunnelId: string } | { tunnel: Tunnel };
 
+  /**
+   * Represents a VPC service that is accessible via a hostname.
+   */
   export interface HostnameHost {
     hostname: string;
     resolverNetwork: Network & { resolverIps?: string[] };
@@ -72,7 +122,7 @@ export const VpcService = Resource(
     }
     const input: ConnectivityService.Input = {
       name: props.name ?? this.scope.createPhysicalName(id),
-      type: "http",
+      type: props.serviceType ?? "http",
       tcp_port: props.tcpPort,
       app_protocol: props.appProtocol,
       http_port: props.httpPort,
@@ -128,6 +178,7 @@ export const VpcService = Resource(
       return {
         name: service.name,
         serviceId: service.service_id,
+        serviceType: service.type,
         tcpPort: service.tcp_port,
         appProtocol: service.app_protocol,
         httpPort: service.http_port,
