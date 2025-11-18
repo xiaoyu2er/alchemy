@@ -216,6 +216,7 @@
     "@cloudflare/vite-plugin": "catalog:",
     "@libsql/client": "^0.15.12",
     "@opennextjs/cloudflare": "^1.6.5",
+    "@sveltejs/adapter-cloudflare": "^7.0.0",
     "astro": "^5.13.2",
     "drizzle-orm": "^0.44.2",
     "rwsdk": "^0.1.36",
@@ -263,6 +264,9 @@
     "@libsql/client": {
       "optional": true
     },
+    "@sveltejs/adapter-cloudflare": {
+      "optional": true
+    },
     "astro": {
       "optional": true
     },
@@ -298,7 +302,7 @@
     "@libsql/client": "^0.15.12",
     "@octokit/rest": "^21.1.1",
     "@sentry/cloudflare": "^9.43.0",
-    "@sveltejs/adapter-cloudflare": "^7.1.2",
+    "@sveltejs/adapter-cloudflare": "^7.2.4",
     "@types/bun": "latest",
     "@types/debug": "^4.1.12",
     "@types/fs-extra": "^11.0.4",
