@@ -9,6 +9,7 @@ export const tunnel = await Tunnel("tunnel", {
       service: "http://localhost:5173",
     },
   ],
+  adopt: true,
 });
 
 export const vpcService = await VpcService("vpc-service", {
@@ -20,6 +21,7 @@ export const vpcService = await VpcService("vpc-service", {
       resolverIps: ["127.0.0.1"],
     },
   },
+  adopt: true,
 });
 
 export const worker = await Worker("worker", {
@@ -27,6 +29,7 @@ export const worker = await Worker("worker", {
   bindings: {
     VPC_SERVICE: vpcService,
   },
+  adopt: true,
 });
 
 console.log(`Worker URL: ${worker.url}`);
