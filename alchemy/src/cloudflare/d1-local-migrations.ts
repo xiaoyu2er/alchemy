@@ -47,7 +47,14 @@ export const applyLocalD1Migrations = async (
       if (appliedMigrations.results.some((m) => m.name === migration.id)) {
         continue;
       }
-      await session.prepare(migration.sql).run();
+      // split large migrations to prevent D1_ERROR: statement too long: SQLITE_TOOBIG
+      await session.batch(
+        migration.sql
+          .split(";")
+          .flatMap((statement) =>
+            statement.trim() ? session.prepare(statement) : [],
+          ),
+      );
       await insertRecord.bind(migration.id).run();
     }
   } finally {
